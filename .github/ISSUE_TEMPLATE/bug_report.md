@@ -1,29 +1,17 @@
 ---
 name: Bug report
-about: Something is not working as expected
+about: Report a problem using synthetic data only
 title: "[Bug] "
-labels: bug
+labels: ""
+assignees: ""
 ---
 
-**What happened**
-A clear description of the bug.
+Version, downloaded file SHA-256, and the build fingerprint shown on your report:
 
-**Steps to reproduce**
-1.
-2.
-3.
+Windows version and game/client build:
 
-**Expected behaviour**
-What you expected instead.
+Steps to reproduce:
 
-**Environment**
-- Part: `desktop scanner` / `web dashboard` / `server plugin` / `docs`
-- Version / commit:
-- OS (for the scanner):
-- PHP version (for the web):
+Expected / actual behavior:
 
-**Screenshots / logs**
-Add any relevant screenshots or log excerpts. **Do not paste real player data (SteamIDs, IPs, serials).**
-
-**Additional context**
-Anything else that helps.
+Do not attach raw player reports, private paths, identifiers, passwords or API tokens.

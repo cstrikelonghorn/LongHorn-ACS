@@ -1,54 +1,7 @@
-# Secrets - never commit these
-.env
-*.secret
-acp-settings.json
-windows/acp-settings.json
-!windows/acp-settings.example.json
-
-# Player data & runtime databases - privacy-sensitive, never publish
-reports/*.json
-!reports/.htaccess
-!reports/index.php
-database/*.sqlite
-database/*.sqlite-*
-database/admin_audit.log
-database/ip_geo.json
-database/visitor_stats.json
-database/visitor_online.json
-database/backups/
-ratelimit/
-uploads/
-tmp/
-scratch/
-
-# Build output & installers - releases are published via GitHub Releases
-bin/
-obj/
-publish/
-publish-*/
-windows/release/
-windows/launcher/
 *.exe
 *.dll
 *.pdb
 *.zip
-
-# Release tooling output & nested repo
-publication/public-repo/
-publication/artifacts/
-publication/staging/
-publication/verification/
-__pycache__/
-*.pyc
-
-# Logs
-*.log
-
-# Editors / OS
-.vs/
-.vscode/
-.idea/
-*.user
-*.suo
-Thumbs.db
-.DS_Store
+*.sqlite*
+.env*
+acp-settings.json
