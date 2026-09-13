@@ -1,0 +1,38 @@
+# ----------------------------------------------------------------------
+# LongHorn ACS Portal - Production Apache Configuration
+# ----------------------------------------------------------------------
+
+# 1. Disable Directory Listings
+Options -Indexes
+
+# 2. Block direct HTTP access to sensitive development, source & data files
+<FilesMatch "(^\.|\.(md|sql|sqlite|log|bak|cs|csproj|sln|pdb|deps\.json|runtimeconfig\.json)$)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 3. Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# 4. Performance & Browser Caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+</IfModule>
+
+# 5. Default Encoding
+AddDefaultCharset UTF-8

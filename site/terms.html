@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Use — LongHorn ACS</title>
+<meta name="description" content="Terms of use for the LongHorn ACS anti-cheat scanner.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="icon" href="assets/img/logo.png">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="assets/img/logo.png" alt="LongHorn"><b>ACS <em>Anti-Cheat</em></b></a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy</a>
+      <a class="active" href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker">Legal</span>
+    <h1>Terms of <em>Use</em></h1>
+    <p>These terms govern the use of the LongHorn ACS scanner, dashboard and server engine, and of this website.</p>
+    <p style="margin-top:10px;font-family:var(--f-mono);font-size:12px;color:var(--muted)">Last updated: <span id="upd"></span></p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap legal">
+    <h3>Acceptance</h3>
+    <p>By running the scanner, uploading a report, or viewing this website you agree to these terms. If you do not agree, do not use the service.</p>
+
+    <h3>The service</h3>
+    <p>ACS collects and presents anti-cheat evidence for Counter-Strike 1.6. It inspects a running game process, compares what it finds against signatures and an artifact corpus, and stores the result as a report. It is an evidence tool, not a policing system: it does not ban, kick or act on a player by itself.</p>
+
+    <h3>Access</h3>
+    <ul>
+      <li>Uploading reports requires the deployment's upload token — keep it confidential.</li>
+      <li>Viewing the full dashboard, review queue and comparison requires the admin token.</li>
+      <li>Single-report share links grant access to that report only.</li>
+      <li>You are responsible for anything done with a token or link issued to you.</li>
+    </ul>
+
+    <h3>Acceptable use</h3>
+    <ul>
+      <li>Do not upload fabricated, altered, replayed or tampered reports.</li>
+      <li>Do not attempt to access reports, tokens or data you are not authorised to view.</li>
+      <li>Do not use the service to harass, dox, defame or unfairly target a player.</li>
+      <li>Do not overload, scrape or attack the service or its hosting.</li>
+      <li>Do not remove or falsify attribution or branding.</li>
+    </ul>
+
+    <h3>Evidence and bans</h3>
+    <p>Reports, findings and scores are provided as-is and may contain false positives or false negatives. A "confirmed detection" is strong evidence of a specific observation, not proof of intent. Every ban, kick or sanction is decided by the operator of the individual game server, who is solely responsible for that decision.</p>
+
+    <h3>Availability and changes</h3>
+    <p>The service is provided without any warranty of uptime or fitness for a particular purpose. Features, rules and interfaces may change, be interrupted or be discontinued at any time.</p>
+
+    <h3>Limitation of liability</h3>
+    <p>To the maximum extent permitted by law, LongHorn and the operators of this deployment are not liable for indirect, incidental or consequential damages arising from the use of, or inability to use, the service — including decisions made on the basis of a report.</p>
+
+    <h3>Data</h3>
+    <p>Personal data is handled as described in the <a href="privacy.html">Privacy Policy</a>. Reports remain the responsibility of the operator who hosts them.</p>
+
+    <h3>Contact</h3>
+    <p>Questions about these terms: <a href="mailto:support@cslonghorn.com">support@cslonghorn.com</a> or <a href="https://www.cslonghorn.com">cslonghorn.com</a>.</p>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Use</a>
+      <a href="license.html">License</a>
+    </div>
+    <div class="copy">&copy; 2026 <b>LongHorn</b> · cslonghorn.com · All rights reserved</div>
+  </div>
+</footer>
+
+<script>document.getElementById('upd').textContent = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });</script>
+</body>
+</html>

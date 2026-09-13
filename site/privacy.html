@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — LongHorn ACS</title>
+<meta name="description" content="What LongHorn ACS collects, why, and how it is protected.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="icon" href="assets/img/logo.png">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="assets/img/logo.png" alt="LongHorn"><b>ACS <em>Anti-Cheat</em></b></a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a class="active" href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker">Legal</span>
+    <h1>Privacy <em>Policy</em></h1>
+    <p>What we collect when you run a scan or view this site, why we collect it, and how it is protected.</p>
+    <p style="margin-top:10px;font-family:var(--f-mono);font-size:12px;color:var(--muted)">Last updated: <span id="upd"></span></p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap legal">
+    <h2>Overview</h3>
+    <p>LongHorn ACS is an anti-cheat evidence tool for Counter-Strike 1.6. In short: we collect the minimum needed to produce and review anti-cheat evidence, we mask identifiers wherever we can, and we never sell personal data.</p>
+
+    <h3>What we collect</h3>
+    <ul>
+      <li><b>Player identity</b> — nickname, SteamID / Steam2 / Steam account id, and a derived player id.</li>
+      <li><b>Network</b> — the IP address your machine connects from, stored and displayed with the last octet masked.</li>
+      <li><b>Device</b> — Windows version, disk/volume serial and a device fingerprint used to recognise repeat scans.</li>
+      <li><b>Game environment</b> — game build and detected client, game folder contents, loaded modules, drivers, private memory regions, and the results of integrity and hook checks.</li>
+      <li><b>Timing</b> — when the scan ran and your machine's local time.</li>
+      <li><b>Website access</b> — IP address (masked) and user agent, used to serve the page and count visitors.</li>
+    </ul>
+
+    <h3>Why we collect it</h3>
+    <ul>
+      <li>To produce a report — the scan data <em>is</em> the report.</li>
+      <li>To identify a player correctly and separate different machines.</li>
+      <li>To reduce false positives by comparing hashes against a corpus of artifacts seen across many machines.</li>
+      <li>To keep the service running (basic visit counts).</li>
+    </ul>
+
+    <h3>How it is protected</h3>
+    <ul>
+      <li>Reports are HMAC-SHA256 signed, so their contents cannot be altered after the scan.</li>
+      <li>The upload secret and the admin/classification secret are separate.</li>
+      <li>IP addresses are displayed masked; share links never reveal other scans.</li>
+      <li>Report storage is kept outside direct web access.</li>
+    </ul>
+
+    <h3>Who can see a report</h3>
+    <ul>
+      <li><b>Admins</b> — holders of the deployment's admin token.</li>
+      <li><b>Share-link holders</b> — a link that opens one report and nothing else.</li>
+      <li><b>Localhost</b> — requests from the host machine itself.</li>
+    </ul>
+
+    <h3>Retention &amp; sharing</h3>
+    <p>Reports stay on the operator's server until an administrator deletes them. We do not sell personal data, and report data is shared only with the server operators who requested the scan.</p>
+
+    <h3>Your rights</h3>
+    <p>Depending on where you live you may have the right to access, correct or delete the data held about you. Contact the operator of the deployment, or the LongHorn team below.</p>
+
+    <h3>Cookies &amp; counters</h3>
+    <p>This site does not use advertising or analytics cookies. It keeps an aggregate count of visitors, including automated traffic, so a live counter can be shown.</p>
+
+    <h3>Contact</h3>
+    <p>Questions or requests: <a href="mailto:support@cslonghorn.com">support@cslonghorn.com</a> or <a href="https://www.cslonghorn.com">cslonghorn.com</a>. See also the <a href="terms.html">Terms of Use</a> and <a href="license.html">License</a>.</p>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Use</a>
+      <a href="license.html">License</a>
+    </div>
+    <div class="copy">&copy; 2026 <b>LongHorn</b> · cslonghorn.com · All rights reserved</div>
+  </div>
+</footer>
+
+<script>document.getElementById('upd').textContent = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });</script>
+</body>
+</html>

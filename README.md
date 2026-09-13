@@ -127,6 +127,10 @@ See [`server/`](server/) and [docs/DETECTION.md](docs/DETECTION.md).
 | [SECURITY.md](SECURITY.md) | Threat model, report integrity, disclosure |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 
+## Documentation site
+
+A static, public-safe version of these docs lives in [`site/`](site/) and can be published with GitHub Pages (`.github/workflows/pages.yml`). It contains **no application source** — a CI guard refuses to publish if any back-end file (`.php`, `.cs`, `.cpp`, `.sqlite`, …) appears under `site/`.
+
 ## Project status
 
 **In development — not production-ready.** The detection engine, web dashboard and server plugin are functional, but APIs, rules and the UI can change without notice. Treat this repository as a work in progress.

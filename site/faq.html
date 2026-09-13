@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ — LongHorn ACS</title>
+<meta name="description" content="How the LongHorn ACS anti-cheat scanner works, how to use it, what it scans and how your data is handled.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="icon" href="assets/img/logo.png">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="assets/img/logo.png" alt="LongHorn"><b>ACS <em>Anti-Cheat</em></b></a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a class="active" href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker">Help Center</span>
+    <h1>Frequently Asked <em>Questions</em></h1>
+    <p>What ACS is, how it works, how to use it, and how your data is handled.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li><b>Scan.</b> With Counter-Strike running, the desktop app reads the live game process — modules, memory, hooks, files, drivers and configuration.</li>
+      <li><b>Upload.</b> Findings are packed into a report and signed (HMAC-SHA256) so they cannot be edited or swapped in transit.</li>
+      <li><b>Review.</b> The dashboard stores the report, classifies each artifact, and separates confirmed detections from lower-confidence review items.</li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What it scans</h2>
+    <div class="grid">
+      <div class="card"><h3>Processes</h3><p>Running processes compared against a known cheat/tool list, with paths and hashes.</p></div>
+      <div class="card"><h3>Drivers</h3><p>Loaded kernel drivers with hashes, publisher and signature state.</p></div>
+      <div class="card"><h3>Game modules</h3><p>Every DLL mapped into the game, its path and signer.</p></div>
+      <div class="card"><h3>Memory</h3><p>Private executable memory that backs no file on disk.</p></div>
+      <div class="card"><h3>Hooks &amp; patches</h3><p>Engine code compared byte-for-byte against the file on disk.</p></div>
+      <div class="card"><h3>External readers</h3><p>Processes holding handles on the game, foreign threads, overlay windows.</p></div>
+      <div class="card"><h3>Scripts &amp; config</h3><p>Alias graphs and control-flow shapes behind bunny-hop, rapid-fire and no-recoil scripts.</p></div>
+      <div class="card"><h3>Game files</h3><p>The live game folder with hashes, so altered files and dropped DLLs are visible.</p></div>
+      <div class="card"><h3>Build &amp; client</h3><p>Steam, non-Steam and community clients identified so they are not mistaken for cheats.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Using the app</h2>
+    <ol class="steps">
+      <li>Set <code>apiUrl</code> and <code>apiToken</code> in <code>acp-settings.json</code>.</li>
+      <li>Launch Counter-Strike 1.6. The scanner only runs while the game is open.</li>
+      <li>Press Scan and keep the game focused while the live-behaviour stage runs.</li>
+      <li>The signed report uploads automatically when the scan finishes.</li>
+    </ol>
+    <div class="note"><b>Tip.</b> Run as administrator for the deepest evidence — some memory and process reads are limited without it.</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Using the web dashboard</h2>
+    <ol class="steps">
+      <li><b>Dashboard.</b> Browse the newest scans, search by player or server, and filter to one server with a click.</li>
+      <li><b>Report.</b> See the verdict, player/server data, confirmed detections and review evidence.</li>
+      <li><b>Evidence.</b> Open a detection's forensic drawer for the exact rule and byte difference.</li>
+      <li><b>Share / Compare / Export.</b> Copy a single-report link, compare two reports, or export a PDF.</li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How safe is it?</h2>
+    <div class="grid">
+      <div class="card"><h3>Read-only</h3><p>It collects and explains; it does not ban, punish or modify your game.</p></div>
+      <div class="card"><h3>No password</h3><p>It reads the SteamID the game already exposes — never your Steam password.</p></div>
+      <div class="card"><h3>Tamper-evident</h3><p>Reports are signed; edited reports are rejected when the server enforces signatures.</p></div>
+      <div class="card"><h3>Masked IP</h3><p>Addresses display with the last octet hidden (e.g. <code>109.187.61.***</code>).</p></div>
+      <div class="card"><h3>Gated access</h3><p>Reports are stored outside direct web access and require a token or share key.</p></div>
+      <div class="card"><h3>Fewer false positives</h3><p>Known clients are recognised and common files are learned as clean.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Common questions</h2>
+
+    <details class="faq"><summary>Is the scanner a virus or malware?</summary><div class="body">No. It is a read-only inspection tool. It opens the game process to read memory, hashes files and uploads a report — it does not inject code, modify the game, or run in the background.</div></details>
+    <details class="faq"><summary>Does it ban players automatically?</summary><div class="body">No. ACS produces evidence. A confirmed detection is strong evidence; every ban or kick is a human operator's decision.</div></details>
+    <details class="faq"><summary>Will it flag Steam, Discord or MSI Afterburner?</summary><div class="body">That is what client profiles and the artifact corpus prevent. Known overlays and injectors are recognised by name and hash, and common files seen on many machines are learned as clean.</div></details>
+    <details class="faq"><summary>Does it work with non-Steam clients and emulators?</summary><div class="body">Yes — NextClient, GSClient, GoldClient, RevEmu/RevCrew, SmartSteamEmu and Goldberg are identified so their own engine changes are not treated as cheating.</div></details>
+    <details class="faq"><summary>Do I need administrator rights?</summary><div class="body">The scan runs without elevation, but running as administrator allows deeper inspection and more complete evidence.</div></details>
+    <details class="faq"><summary>Does the game have to be running?</summary><div class="body">Yes. The scanner attaches to a live <code>hl.exe</code> — start Counter-Strike first.</div></details>
+    <details class="faq"><summary>How long does a scan take?</summary><div class="body">Typically well under a minute for the static checks, plus a short live-behaviour sample while you play.</div></details>
+    <details class="faq"><summary>What data is stored, and for how long?</summary><div class="body">Player identity, masked IP, OS, hardware identifiers, game build and the evidence found. Reports stay on the operator's server until an administrator deletes them. See the <a href="privacy.html">Privacy Policy</a>.</div></details>
+    <details class="faq"><summary>Can a report be faked or edited?</summary><div class="body">Reports are HMAC-SHA256 signed. When the server enforces signatures, a report changed after signing is rejected.</div></details>
+    <details class="faq"><summary>Who can see my report?</summary><div class="body">Admins with the access token, anyone holding a single-report share link you give out, or localhost on the host machine.</div></details>
+    <details class="faq"><summary>Is there a way to prove I am clean?</summary><div class="body">Yes. Run a scan and share the resulting report link. A clean verdict is exactly the proof the system is built to provide.</div></details>
+    <details class="faq"><summary>I found a false positive — what should I do?</summary><div class="body">Send the report link to support. Legitimate programs are folded into the client profiles or classified clean in the corpus, fixing the false positive for future scans.</div></details>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Use</a>
+      <a href="license.html">License</a>
+    </div>
+    <div class="copy">&copy; 2026 <b>LongHorn</b> · cslonghorn.com · All rights reserved</div>
+  </div>
+</footer>
+
+</body>
+</html>

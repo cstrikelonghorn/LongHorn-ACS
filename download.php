@@ -7,7 +7,6 @@ require __DIR__ . '/nav.php';
 
 // Auto-sync app artwork into web-accessible images directory if present
 $copyMap = [
-    'C:/Users/zer0ne_LP_Local/.gemini/antigravity/brain/9512323f-c38f-436d-a70d-76a735527921/.user_uploaded/media_1789268696273.jpg' => __DIR__ . '/images/acs-app-screenshot.jpg',
     __DIR__ . '/windows/Assets/acs-hero.png' => __DIR__ . '/images/acs-hero.png',
     __DIR__ . '/windows/Assets/acs-logo.png' => __DIR__ . '/images/acs-logo.png',
 ];

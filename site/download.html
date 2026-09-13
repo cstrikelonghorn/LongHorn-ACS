@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download — LongHorn ACS</title>
+<meta name="description" content="Download and install the LongHorn ACS Windows scanner.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="icon" href="assets/img/logo.png">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="assets/img/logo.png" alt="LongHorn"><b>ACS <em>Anti-Cheat</em></b></a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a class="active" href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker">Windows 10 / 11 (x64)</span>
+    <h1>Download <em>ACS</em></h1>
+    <p>The desktop scanner only runs while Counter-Strike is already open — it attaches to a live <code>hl.exe</code>.</p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/cstrikelonghorn/LongHorn-ACS/releases/latest">Get the latest release</a>
+      <a class="btn ghost" href="faq.html">Need help?</a>
+    </div>
+    <p style="margin-top:14px;font-size:13px;color:var(--muted)">Release artifacts are published on GitHub with a SHA-256 checksum. If no release is listed yet, the project is still in development.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Requirements</h2>
+    <div class="grid">
+      <div class="card"><h3>Operating system</h3><p>Windows 10 or 11, 64-bit.</p></div>
+      <div class="card"><h3>Game</h3><p>Counter-Strike 1.6 (<code>hl.exe</code> / <code>cstrike.exe</code>).</p></div>
+      <div class="card"><h3>Rights</h3><p>Administrator recommended for the deepest memory and process evidence.</p></div>
+      <div class="card"><h3>Server</h3><p>A reachable ACS web deployment (<code>api.php</code>) and its upload token.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Install</h2>
+    <ol class="steps">
+      <li><b>Download</b> the release archive and extract it somewhere, e.g. <code>C:\Tools\ACS</code>.</li>
+      <li><b>Configure</b> <code>acp-settings.json</code> next to the executable with your <code>apiUrl</code> and <code>apiToken</code>.</li>
+      <li><b>Start Counter-Strike 1.6</b> and join a server (or stay at the menu).</li>
+      <li><b>Run the scanner</b>, press Scan, and let it finish — the signed report uploads automatically.</li>
+    </ol>
+    <div class="note">Example configuration: <code>{ "apiUrl": "https://your-host/acp/api.php", "apiToken": "YOUR_TOKEN" }</code></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Verify the download</h2>
+    <p class="lead">Each release publishes a SHA-256 checksum. On Windows:</p>
+    <p><code>Get-FileHash .\ACS-Scanner-v3.3.0.zip -Algorithm SHA256</code></p>
+    <p style="margin-top:10px">Compare the result against the value in the release notes before running the app.</p>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Use</a>
+      <a href="license.html">License</a>
+    </div>
+    <div class="copy">&copy; 2026 <b>LongHorn</b> · cslonghorn.com · All rights reserved</div>
+  </div>
+</footer>
+
+</body>
+</html>

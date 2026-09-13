@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LongHorn ACS — Anti-Cheat Scanner for Counter-Strike 1.6</title>
+<meta name="description" content="Evidence-based anti-cheat for Counter-Strike 1.6: a Windows scanner, a web report dashboard, and a ReHLDS server engine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="icon" href="assets/img/logo.png">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="assets/img/logo.png" alt="LongHorn"><b>ACS <em>Anti-Cheat</em></b></a>
+    <nav class="nav">
+      <a class="active" href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="kicker">Counter-Strike 1.6</span>
+    <h1>Evidence-based <em>anti-cheat</em>, not guesswork.</h1>
+    <p>LongHorn ACS combines a Windows scanner, a web report dashboard and an optional server engine. It collects strong evidence, explains it clearly, and leaves every ban to a human operator.</p>
+    <div class="actions">
+      <a class="btn primary" href="download.html">Download for Windows</a>
+      <a class="btn ghost" href="faq.html">Read the FAQ</a>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>Three parts, one verdict</h2>
+    <p class="lead">Each component can stand alone, but they share one vocabulary of evidence.</p>
+    <div class="grid">
+      <div class="card"><h3>Desktop scanner</h3><p>Attaches to a running <code>hl.exe</code>, inventories the game, checks it against a signature database and an artifact corpus, then uploads a signed report.</p></div>
+      <div class="card"><h3>Web dashboard</h3><p>Stores reports, shows exactly what was found, ranks lower-confidence items for review, and supports compare, history and PDF export.</p></div>
+      <div class="card"><h3>Server engine</h3><p>An optional ReHLDS plugin that analyses how a player actually moves, aims and fires — with no client cooperation required.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Built to avoid false positives</h2>
+    <p class="lead">Most of the surviving CS 1.6 population runs repacks, community clients and emulators that modify the engine by design. A scanner that cannot tell that apart from cheating is worse than useless.</p>
+    <div class="grid">
+      <div class="card"><h3>Module integrity</h3><p>Engine code is compared byte-for-byte against the file on disk — hooks and patches can't hide.</p></div>
+      <div class="card"><h3>Client recognition</h3><p>Steam, NextClient, GSClient, RevEmu and other emulators are identified by name and hash, so their own detours aren't flagged.</p></div>
+      <div class="card"><h3>Artifact corpus</h3><p>Every hash ever seen, scored by how many <em>distinct machines</em> carry it — common files become clean automatically.</p></div>
+      <div class="card"><h3>External-cheat probes</h3><p>Processes holding handles on the game, foreign threads and overlay windows are surfaced for review.</p></div>
+      <div class="card"><h3>Script analysis</h3><p>Alias graphs and control-flow shapes catch bunny-hop, rapid-fire and no-recoil scripts regardless of naming.</p></div>
+      <div class="card"><h3>Server correlation</h3><p>Client and server evidence combine into one explainable risk score per SteamID.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The app</h2>
+    <p class="lead">A focused Windows client — idle, scanning, and clear verdicts.</p>
+    <div class="shots">
+      <figure class="shot"><img src="assets/img/app-idle.png" alt="Scanner idle"><span>Idle</span></figure>
+      <figure class="shot"><img src="assets/img/app-scanning.png" alt="Scanner running"><span>Scanning</span></figure>
+      <figure class="shot"><img src="assets/img/app-detected.png" alt="Detection verdict"><span>Detected</span></figure>
+      <figure class="shot"><img src="assets/img/app-warning.png" alt="Review verdict"><span>Review</span></figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How a scan works</h2>
+    <ol class="steps">
+      <li><b>Scan.</b> With Counter-Strike running, the app reads the live game process: modules, memory, hooks, files, drivers and configuration.</li>
+      <li><b>Upload.</b> Findings are packed into a report and signed (HMAC-SHA256) so they cannot be edited in transit.</li>
+      <li><b>Review.</b> The dashboard stores the report, classifies each artifact, and separates confirmed detections from lower-confidence review items.</li>
+    </ol>
+    <div class="note"><b>Evidence, not a verdict.</b> A report is a set of observations. Bans are always a human decision made by the server operator.</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Questions</h2>
+    <details class="faq"><summary>Does it ban players automatically?</summary><div class="body">No. ACS produces evidence; every ban or kick is a decision made by a human server operator.</div></details>
+    <details class="faq"><summary>Is it safe? What does it collect?</summary><div class="body">It is a read-only inspection tool that never modifies your game. It reads the SteamID the game exposes, a hardware fingerprint, your game files and the scan results. IPs are stored and displayed masked. See the <a href="privacy.html">Privacy Policy</a>.</div></details>
+    <details class="faq"><summary>Does it work with non-Steam clients?</summary><div class="body">Yes — Steam, non-Steam repacks, NextClient, GSClient, GoldClient, RevEmu/RevCrew, SmartSteamEmu, Goldberg and others are recognised so their own detours are not treated as cheating.</div></details>
+    <p style="margin-top:16px"><a href="faq.html">See all questions →</a></p>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div class="links">
+      <a href="index.html">Overview</a>
+      <a href="download.html">Download</a>
+      <a href="faq.html">FAQ</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Use</a>
+      <a href="license.html">License</a>
+    </div>
+    <div class="copy">&copy; 2026 <b>LongHorn</b> · cslonghorn.com · All rights reserved</div>
+  </div>
+</footer>
+
+</body>
+</html>
