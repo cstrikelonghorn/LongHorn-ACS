@@ -1,0 +1,24 @@
+# Normalize line endings across the repo.
+* text=auto eol=lf
+
+# Windows batch/PowerShell/Visual Studio files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.sln text eol=crlf
+*.vcxproj text eol=crlf
+*.vcxproj.filters text eol=crlf
+*.inf text eol=crlf
+
+# Binary assets — never convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.sqlite binary
+*.db binary
+*.exe binary
+*.dll binary
+*.pdb binary
+*.zip binary

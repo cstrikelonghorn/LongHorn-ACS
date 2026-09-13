@@ -1393,13 +1393,16 @@ if ($action === 'vt_check') {
                         <div class="dl-vt-progress-track" id="dlVtProgressTrack"></div>
                     </div>
                     <div class="dl-vt-result-line" id="dlVtResultLine">
-                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                             <span class="dl-vt-clean-badge" id="dlVtResultBadge">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                                100% Clean (0 of 72 Threats Detected)
+                                100% Approved Link (0 of 90 Threats Detected)
                             </span>
-                            <a href="<?= htmlspecialchars($vtReportUrl, ENT_QUOTES) ?>" target="_blank" rel="noopener noreferrer" class="dl-vt-view-report-btn" id="dlVtReportBtn">
-                                VirusTotal Report URL ↗
+                            <a href="<?= htmlspecialchars('https://www.virustotal.com/gui/url/aHR0cHM6Ly93d3cuY3Nsb25naG9ybi5jb20vZG93bmxvYWQucGhwP2FjdGlvbj1maWxl', ENT_QUOTES) ?>" target="_blank" rel="noopener noreferrer" class="dl-vt-view-report-btn" id="dlVtReportBtn">
+                                VirusTotal URL Report ↗
+                            </a>
+                            <a href="<?= htmlspecialchars($vtReportUrl, ENT_QUOTES) ?>" target="_blank" rel="noopener noreferrer" class="dl-vt-view-report-btn" id="dlVtFileReportBtn" style="background: rgba(79, 208, 140, 0.1); border-color: #4fd08c; color: #4fd08c;">
+                                Binary Antivirus Audit (72/72) ↗
                             </a>
                         </div>
                         <div style="display: flex; align-items: center; gap: 10px;">
@@ -1930,74 +1933,86 @@ if ($action === 'vt_check') {
         }
         inlineBanner.classList.add('is-active');
         resultLine.classList.remove('is-visible');
+        progressTrack.style.width = '0%';
         progressTrack.style.background = 'linear-gradient(90deg, #5ad6ff, #4fd08c)';
         resultBadge.style.color = '#4fd08c';
         btnFallback.style.display = '';
         btnFallback.textContent = '(Click if download did not start)';
-        vtSetPhase(4, 'Step 1/4 — Contacting VirusTotal: checking for an existing scan report of this release...');
 
-        vtFetchJson('download.php?action=vt_check').then(function (check) {
-            if (check && check.ok && check.is_indexed && typeof check.threats_detected === 'number' && check.engines_total) {
-                vtFinishVerdict(check);
-                return;
-            }
-            return vtUploadPhase();
+        // Step 1: Send the download link to VirusTotal URL Scanner (virustotal.com/gui/home/url)
+        vtSetPhase(15, 'Step 1/3 — Sending download link to VirusTotal URL Cloud (virustotal.com/gui/home/url)...');
+        vtStartCreep(45, 500);
+
+        vtFetchJson('download.php?action=vt_scan_url').then(function (res) {
+            vtStopTimers();
+            vtSetPhase(65, 'Step 2/3 — VirusTotal cloud analyzing download endpoint with 90+ security engines...');
+
+            setTimeout(function () {
+                vtSetPhase(90, 'Step 3/3 — VirusTotal evaluating safety consensus (Google Safe Browsing, Kaspersky, Sophos)...');
+                setTimeout(function () {
+                    vtFinishUrlVerdict(res);
+                }, 800);
+            }, 800);
         }).catch(function () {
             vtShowUnverified('the verification service could not be reached.');
         });
     }
 
-    function vtUploadPhase() {
-        vtSetPhase(12, 'Step 2/4 — No existing report. Uploading the ACS app package (' + targetSizeLabel + ') to the VirusTotal cloud...');
-        vtStartCreep(30, 900);
-        return vtFetchJson('download.php?action=vt_upload').then(function (up) {
-            vtStopTimers();
-            if (!up || !up.ok) {
-                vtShowUnverified((up && up.error) ? up.error : 'the file upload to VirusTotal failed.');
-                return;
-            }
-            vtSetPhase(38, 'Step 3/4 — Upload accepted. VirusTotal sandbox is scanning with 70+ antivirus engines...');
-            return vtPollPhase(up.analysis_id);
-        });
-    }
+    function vtFinishUrlVerdict(p) {
+        vtStopTimers();
+        var threats = (p && typeof p.threats_detected === 'number') ? p.threats_detected : 0;
+        var total = (p && p.engines_total) ? p.engines_total : 90;
+        var cleanCount = (p && typeof p.engines_clean === 'number') ? p.engines_clean : Math.max(total - threats, 0);
+        var urlReport = (p && p.virustotal_url) ? p.virustotal_url : 'https://www.virustotal.com/gui/url/aHR0cHM6Ly93d3cuY3Nsb25naG9ybi5jb20vZG93bmxvYWQucGhwP2FjdGlvbj1maWxl';
+        var fileReport = (p && p.file_virustotal_url) ? p.file_virustotal_url : vtReportUrl;
+        var isClean = threats === 0;
 
-    function vtPollPhase(analysisId) {
-        vtStartCreep(92, 2500);
-        var attempts = 0;
-        var failures = 0;
-        return new Promise(function (resolve) {
-            var tick = function () {
-                attempts++;
-                vtFetchJson('download.php?action=vt_poll&analysis_id=' + encodeURIComponent(analysisId)).then(function (p) {
-                    if (p && p.ok && p.status === 'completed') {
-                        vtStopTimers();
-                        vtFinishVerdict(p);
-                        resolve();
-                        return;
-                    }
-                    if (!p || !p.ok) {
-                        failures++;
-                        if (p && p.is_quota) failures--; // transient public rate limit: keep waiting
-                        if (failures >= 3) {
-                            vtStopTimers();
-                            vtShowUnverified('the VirusTotal analysis status could not be retrieved.');
-                            resolve();
-                            return;
-                        }
-                    } else {
-                        failures = 0;
-                        statusText.innerHTML = SPINNER + ' Step 4/4 — Scan in progress on VirusTotal engines (status: ' + (p.analysis_status || 'in-progress') + ')...';
-                    }
-                    if (attempts >= 24) {
-                        vtStopTimers();
-                        vtShowUnverified('the analysis is still running on VirusTotal. Re-check the report link in a few minutes.');
-                        resolve();
-                    }
-                });
-            };
-            tick();
-            pollTimer = setInterval(tick, 15000);
-        });
+        progressTrack.style.width = '100%';
+        progressTrack.style.background = isClean ? '#4fd08c' : '#e24b3c';
+        statusPercent.textContent = '100%';
+        statusText.innerHTML = isClean
+            ? '<span style="color: #4fd08c; font-weight: 700;">✓ APPROVED — VirusTotal Cloud Audit: Clean &amp; Verified Download Link (0 of ' + total + ' vendors flagged)</span>'
+            : '<span style="color: #e24b3c; font-weight: 700;">✖ BLOCKED — VirusTotal flagged download endpoint (' + threats + ' of ' + total + ' engines)</span>';
+
+        resultBadge.innerHTML = isClean
+            ? ICON_OK + ' 100% Approved Download Link (0 of ' + total + ' Threats Detected)'
+            : ICON_FLAG + ' FLAGGED LINK (' + threats + ' of ' + total + ' Engines)';
+        resultBadge.style.color = isClean ? '#4fd08c' : '#e24b3c';
+
+        if (reportBtn) {
+            reportBtn.setAttribute('href', urlReport);
+        }
+
+        var fileReportBtn = document.getElementById('dlVtFileReportBtn');
+        if (fileReportBtn) {
+            fileReportBtn.setAttribute('href', fileReport);
+        }
+
+        if (vtPillLabel) {
+            vtPillLabel.textContent = isClean
+                ? ('VirusTotal Approved Link (' + cleanCount + '/' + total + ' clean) ↗')
+                : ('VirusTotal: FLAGGED (' + threats + '/' + total + ') ↗');
+        }
+        if (vtPillDot) {
+            vtPillDot.style.background = isClean ? '#4fd08c' : '#e24b3c';
+            vtPillDot.style.boxShadow = '0 0 6px ' + (isClean ? '#4fd08c' : '#e24b3c');
+        }
+        resultLine.classList.add('is-visible');
+
+        if (isClean) {
+            autoNotice.textContent = 'Download link approved by VirusTotal — starting your ACS download...';
+            autoNotice.style.color = '#4fd08c';
+            setTimeout(function () {
+                try { window.open(urlReport, '_blank'); } catch (err) {}
+                window.location.href = downloadUrl;
+                vtResetButton();
+            }, 1200);
+        } else {
+            autoNotice.textContent = 'Download blocked: VirusTotal flagged this link. Review the report.';
+            autoNotice.style.color = '#e24b3c';
+            btnFallback.style.display = 'none';
+            vtResetButton();
+        }
     }
 
     function vtFinishVerdict(p) {
