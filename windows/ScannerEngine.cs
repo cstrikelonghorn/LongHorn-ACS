@@ -84,6 +84,10 @@ public static class ScannerEngine
 
 		public bool Enabled { get; private set; } = true;
 
+		public bool Valid => CompileErrors.Count == 0;
+
+		public List<string> CompileErrors { get; } = new List<string>();
+
 		public List<string> Scopes { get; } = new List<string>();
 
 		public List<MatchCondition> Conditions { get; } = new List<MatchCondition>();
@@ -146,8 +150,9 @@ public static class ScannerEngine
 							{
 								matchCondition.Regexes.Add(new Regex(pattern, regexOptions | RegexOptions.CultureInvariant | RegexOptions.Compiled, TimeSpan.FromMilliseconds(150L)));
 							}
-							catch
+							catch (Exception ex)
 							{
+								compiledRule.CompileErrors.Add($"{name}: {ex.Message}");
 							}
 						}
 					}
@@ -161,6 +166,10 @@ public static class ScannerEngine
 					}
 					compiledRule.Conditions.Add(matchCondition);
 				}
+			}
+			if (!compiledRule.Valid)
+			{
+				compiledRule.Enabled = false;
 			}
 			return compiledRule;
 		}
@@ -193,7 +202,12 @@ public static class ScannerEngine
 		public List<Regex> Regexes { get; } = new List<Regex>();
 	}
 
-	private sealed record ConnectedServer(string Address, string Name, string Map);
+	/// <summary>
+	/// The game server as the engine reported it at the moment the scan started. Status is
+	/// "connected", "local", "not-connected" or "unverified"; Address, Name and Map are only
+	/// ever filled for "connected", and Name/Map only from the server's own reply.
+	/// </summary>
+	private sealed record ConnectedServer(string Status, string Address, string Name, string Map, string NameSource, GameTraffic.Result Traffic, string LiveVersion, ValveA2S.ServerInfo? A2S = null);
 
 	private sealed record HlTarget(Process Process, string Path, string Root, string Hash, string StartTime, int TotalGameProcesses, int ActiveGameProcesses = 1);
 
@@ -530,7 +544,12 @@ public static class ScannerEngine
 		"hl.exe", "cstrike.exe", "cs.exe", "hw.dll", "sw.dll", "client.dll", "demoplayer.dll", "core.dll", "GameUI.dll", "vgui.dll",
 		"vgui2.dll", "steamclient.dll", "steam_api.dll", "steam_api_c.dll", "Steam.dll", "FileSystem_Steam.dll",
 		"filesystem_stdio.dll", "particleman.dll", "voice_miles.dll", "Mss32.dll", "mp3dec.asi", "mssv12.asi", "mssv29.asi", "SDL2.dll",
-		"gameoverlayrenderer.dll"
+		"gameoverlayrenderer.dll", "proxy.dll", "a3dapi.dll", "avcodec-53.dll", "avformat-53.dll", "avutil-51.dll",
+		"avcodec-54.dll", "avformat-54.dll", "avutil-52.dll", "chromehtml.dll", "icudt.dll", "libcef.dll",
+		"tier0.dll", "tier0_s.dll", "vstdlib.dll", "vstdlib_s.dll", "steam_api64.dll", "crashhandler.dll",
+		"mp.dll", "valve.dll", "mssmp3.asi", "mssdsp.asi", "mssvoice.asi",
+		"FileSystem_Proxy.dll", "next_engine_mini.dll", "next_lib.dll", "nitro_api.dll", "nitro_api2.dll",
+		"nextclient.dll", "next_client.dll"
 	};
 
 	private static readonly string[] TrustedSigners = new string[12]
@@ -570,6 +589,20 @@ public static class ScannerEngine
 
 	private static readonly string[] IntegrityCriticalModules = new string[7] { "hw.dll", "sw.dll", "client.dll", "opengl32.dll", "d3d9.dll", "gameui.dll", "vgui2.dll" };
 
+	// Render and OS modules that legitimate overlays hook in order to draw over a game. Steam's
+	// gameoverlayrenderer, NVIDIA, Discord, Xbox Game Bar and recorder tools all hook
+	// wglSwapBuffers / wglSwapLayerBuffers, which is byte-for-byte what an ESP does. A hook or
+	// patch here is review evidence, never an automatic DETECTED verdict on its own.
+	private static readonly HashSet<string> OverlayHookableModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+	{
+		"opengl32.dll", "d3d9.dll", "d3d8.dll", "ddraw.dll", "dxgi.dll", "winmm.dll", "gdi32.dll", "user32.dll", "dsound.dll", "wininet.dll"
+	};
+
+	// Folders that hold real game content. Third-party runtimes that ship in the root of a Steam
+	// install (CEF: libcef/chromehtml/icudt, FFmpeg: avcodec/avformat/avutil) are not game code
+	// and self-modify at runtime (V8 JIT, FFmpeg CPU dispatch), so they are not integrity-verified.
+	private static readonly string[] GameModDirectories = new string[6] { "cstrike", "valve", "czero", "dod", "tfc", "gearbox" };
+
 	private static readonly string[] SuspiciousTools = new string[18]
 	{
 		"cheatengine", "speedhack", "vehdebug", "x64dbg", "x32dbg", "ollydbg", "scylla", "extremeinjector", "xenos", "ghinjector",
@@ -592,20 +625,27 @@ public static class ScannerEngine
 
 	private static readonly uint[] Crc32Table = GenerateCrc32Table();
 
-	private static readonly Regex ServerEndpointRegex = new Regex("(?<![\\d.])(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d):2[6-8]\\d{3}(?![\\d.])", RegexOptions.Compiled, TimeSpan.FromSeconds(2L));
 
 	private const int AfInet = 2;
 
 	private const int UdpTableOwnerPid = 1;
 
-	public static async Task<ScanUploadResult> ScanAndUploadAsync(string apiUrl, string apiToken, IProgress<string> progress, CancellationToken cancellationToken, Func<string, CancellationToken, Task<bool>>? confirmUpload = null)
+	/// <summary>
+	/// Scans the running game and uploads the report as soon as the scan finishes.
+	///
+	/// Consent is given once, before the scan starts, on a screen that says the report will
+	/// be uploaded automatically (ScanPrivacy). There is no second prompt at the end - the
+	/// player already agreed to exactly this. <paramref name="uploadConsented"/> still fails
+	/// closed: a caller that never showed that screen gets a scan and no upload.
+	/// </summary>
+	public static async Task<ScanUploadResult> ScanAndUploadAsync(string apiUrl, string apiToken, IProgress<string> progress, CancellationToken cancellationToken, bool uploadConsented = false)
 	{
 		await ScanGate.WaitAsync(cancellationToken);
 		try
 		{
 			_scanToken = cancellationToken;
 			HashCache.Clear();
-			return await ScanCoreAsync(apiUrl, apiToken, progress, cancellationToken, confirmUpload);
+			return await ScanCoreAsync(apiUrl, apiToken, progress, cancellationToken, uploadConsented);
 		}
 		finally
 		{
@@ -617,7 +657,7 @@ public static class ScannerEngine
 		}
 	}
 
-	private static async Task<ScanUploadResult> ScanCoreAsync(string apiUrl, string apiToken, IProgress<string> progress, CancellationToken cancellationToken, Func<string, CancellationToken, Task<bool>>? confirmUpload)
+	private static async Task<ScanUploadResult> ScanCoreAsync(string apiUrl, string apiToken, IProgress<string> progress, CancellationToken cancellationToken, bool uploadConsented)
 	{
 		if (!Uri.TryCreate(apiUrl, UriKind.Absolute, out Uri endpoint) || (endpoint.Scheme != Uri.UriSchemeHttps && (!(endpoint.Scheme == Uri.UriSchemeHttp) || !endpoint.IsLoopback)))
 		{
@@ -629,12 +669,13 @@ public static class ScannerEngine
 		Stopwatch stopwatch = Stopwatch.StartNew();
 		using (HttpClient http = new HttpClient(new HttpClientHandler
 		{
-			AllowAutoRedirect = false
+			AllowAutoRedirect = true
 		})
 		{
 			Timeout = TimeSpan.FromSeconds(60L)
 		})
 		{
+			http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 LongHornACS/1.0");
 			if (!string.IsNullOrWhiteSpace(apiToken))
 			{
 				http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken.Trim());
@@ -663,6 +704,10 @@ public static class ScannerEngine
 				List<Dictionary<string, object?>> findings = new List<Dictionary<string, object>>();
 				HashSet<string> findingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 				List<string> notes = new List<string>();
+				foreach (CompiledRule invalidRule in _activeRules.All.Where(r => !r.Valid))
+				{
+					notes.Add($"Signature rule '{invalidRule.Id}' was disabled: {string.Join("; ", invalidRule.CompileErrors)}");
+				}
 				List<Dictionary<string, object?>> processes = new List<Dictionary<string, object>>();
 				List<Dictionary<string, object?>> modules = new List<Dictionary<string, object>>();
 				List<Dictionary<string, object?>> drivers = new List<Dictionary<string, object>>();
@@ -670,10 +715,10 @@ public static class ScannerEngine
 				List<Dictionary<string, object?>> memoryArtifacts = new List<Dictionary<string, object>>();
 				List<Dictionary<string, object?>> liveBehavior = new List<Dictionary<string, object>>();
 				HashSet<string> hlPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { target.Path };
-				// Start the game-server lookup now and collect it at the end. It is a UDP
-				// round trip to the server (A2S_INFO) that measured 1.1-2.5s in real scans,
-				// and it needs nothing the local scan produces - so it overlaps with the
-				// rest of the work instead of being appended to it.
+				// Read the game-server connection now, at the moment the scan starts - that is
+				// the moment the report describes. It samples the engine for about a second and,
+				// when joined, asks the server for its name (A2S_INFO), so it runs alongside the
+				// rest of the scan instead of being appended to it.
 				//
 				// It gets its own notes list: List<string> is not safe to append to from two
 				// threads, and the main scan is writing to `notes` throughout.
@@ -682,12 +727,17 @@ public static class ScannerEngine
 				{
 					try
 					{
-						return DetectConnectedServer(target, serverNotes);
+						return DetectConnectedServer(target, serverNotes, cancellationToken);
+					}
+					catch (OperationCanceledException)
+					{
+						throw;
 					}
 					catch (Exception ex)
 					{
 						serverNotes.Add("Connected-server lookup failed: " + ex.Message);
-						return new ConnectedServer("", "", "");
+						return new ConnectedServer("unverified", "", "", "", "",
+							new GameTraffic.Result("unverified", "", 0, 0, 0, Array.Empty<int>(), "lookup failed: " + ex.Message, DateTimeOffset.UtcNow), "");
 					}
 				});
 
@@ -718,7 +768,10 @@ public static class ScannerEngine
 				List<Dictionary<string, object?>> moduleIntegrity = VerifyGameModules(target, modules, findings, findingKeys, notes);
 				GameWindowInfo windowInfo = ReadGameWindowInfo(target.Process);
 				Stage("Scanning in-memory GoldSrc cvars...");
-				ScanLiveCvars(target, modules, findings, findingKeys, notes);
+				// The old cvar probe guessed a cvar_t layout from the first pointer-shaped byte
+				// sequence after a name. That layout varies across Steam and community engines and
+				// produced false detections, so it remains disabled until build-specific layouts are
+				// validated. Config-file cvars are still collected as review evidence.
 				Stage("Checking for external readers, injected threads and overlays...");
 				Dictionary<string, object?> externalSurface = ScanExternalSurface(target, modules, windowInfo, findings, findingKeys, notes);
 				Stage("Scanning live hl.exe directory...");
@@ -728,13 +781,17 @@ public static class ScannerEngine
 				Stage("Sampling game input & window responsiveness...");
 				LiveBehaviorResult liveBehaviorResult = await ScanLiveBehaviorAsync(database.RootElement, target, liveBehavior, findings, findingKeys, notes, cancellationToken);
 				Stage("Running ACS evidence engine...");
-				RunAcpEvidenceEngine(target, modules, hlFiles, findings, findingKeys);
-				string renderMode = DetectRenderMode(modules);
 
 				// What this client actually is, read from the files the process has mapped
 				// rather than guessed from their names. See EngineIdentity for why the old
-				// answer reported a non-Steam install as genuine Steam.
-				EngineIdentity.Result engineIdentity = EngineIdentity.Inspect(target.Path, target.Root, modules);
+				// answer reported a non-Steam install as genuine Steam. Established before the
+				// evidence rules run, because whether a patched engine is expected depends on it.
+				// The server lookup started with the scan and is long finished by now; its engine
+				// read also carries the live version string.
+				ConnectedServer serverInfo = serverLookup.GetAwaiter().GetResult();
+				EngineIdentity.Result engineIdentity = EngineIdentity.Inspect(target.Path, target.Root, modules, serverInfo.LiveVersion);
+				RunAcpEvidenceEngine(target, modules, hlFiles, findings, findingKeys, engineIdentity.NonSteamDistribution);
+				string renderMode = DetectRenderMode(modules);
 				foreach (EngineIdentity.EngineFinding engineFinding in engineIdentity.Findings)
 				{
 					AddEngineFinding(findings, findingKeys, engineFinding.Id, engineFinding.Name, engineFinding.Severity,
@@ -745,9 +802,10 @@ public static class ScannerEngine
 				engineChecks.Add(Check("Client distribution identified", engineIdentity.Confidence != "none", engineIdentity.Distribution));
 				engineChecks.Add(Check("Launcher signed by Valve", engineIdentity.LauncherSigned,
 					engineIdentity.LauncherSigned ? engineIdentity.LauncherSigner : "not signed / not verifiable"));
-				engineChecks.Add(Check("Engine build identified", engineIdentity.EngineBuildDate != "",
+				engineChecks.Add(Check("Engine build identified", engineIdentity.EngineBuildNumber is not null,
 					(engineIdentity.EngineModule == "" ? "engine module not found" : engineIdentity.EngineModule)
-						+ (engineIdentity.EngineBuildDate == "" ? " — no build stamp" : " — " + engineIdentity.EngineBuildDate)));
+						+ (engineIdentity.EngineVersion == "" ? "" : " v" + engineIdentity.EngineVersion)
+						+ (engineIdentity.EngineBuildNumber is null ? " — build not determined" : " build " + engineIdentity.EngineBuildNumber)));
 				engineChecks.Add(Check("No inline hooks (render/timing)", !hookResult.Hooked, hookResult.Hooked ? ("hook -> " + hookResult.HookedAddr) : "none found"));
 				int verifiedModules = moduleIntegrity.Count((Dictionary<string, object> m) => Convert.ToString(m.GetValueOrDefault("status")) == "clean");
 				int patchedModules = moduleIntegrity.Count((Dictionary<string, object> m) => Convert.ToString(m.GetValueOrDefault("status")) == "patched");
@@ -765,6 +823,7 @@ public static class ScannerEngine
 				ScanExecutionTraces(database.RootElement, findings, findingKeys, notes);
 				ScanRegistryExecutionHistory(database.RootElement, findings, findingKeys, notes);
 				ScanDownloadedTraces(database.RootElement, findings, findingKeys, notes);
+				ScanRecycleBin(database.RootElement, findings, findingKeys, notes);
 				Stage("Scanning NTFS change journal for recent deletions...");
 				ScanUsnJournalDeletions(target.Root, findings, findingKeys, notes);
 				int detected = findings.Count((Dictionary<string, object> f) => SeverityOf(f) == "DETECTED");
@@ -775,13 +834,18 @@ public static class ScannerEngine
 				VolumeIdentity hdd = ReadVolumeSerial(target.Root);
 				string deviceFingerprint = StableDeviceFingerprint(steamId.SteamId64, hdd.Serial);
 				Stage("Resolving the connected game server...");
-				// Usually already finished by now, so this stage costs nothing.
-				ConnectedServer serverInfo = serverLookup.GetAwaiter().GetResult();
 				notes.AddRange(serverNotes);
-				engineChecks.Add(Check("Connected game server", serverInfo.Address != "", (serverInfo.Address == "") ? "no active server connection found" : (serverInfo.Address + ((serverInfo.Map != "") ? (" — map " + serverInfo.Map) : ""))));
-				if (string.IsNullOrWhiteSpace(serverInfo.Address))
+				progress.Report(DescribeServer(serverInfo));
+				engineChecks.Add(Check("Connected game server", serverInfo.Status == "connected",
+					serverInfo.Status switch
+					{
+						"connected" => $"{Or(serverInfo.Name, "name not reported")} — {serverInfo.Address}" + (serverInfo.Map != "" ? " — map " + serverInfo.Map : ""),
+						"not-connected" => "No Server Detected",
+						_ => "not verified: " + serverInfo.Traffic.Reason
+					}));
+				if (serverInfo.Status == "not-connected")
 				{
-					AddEngineFinding(findings, findingKeys, "acp-server-not-connected", "Player not connected to game server", "INFO", "environment", "game-process", "No active server connection", "Effective anticheat scanning is best performed while connected to a game server.", target.StartTime);
+					AddEngineFinding(findings, findingKeys, "acp-server-not-connected", "Player not connected to game server", "INFO", "environment", "game-process", "No Server Detected", "The game was not joined to any server when the scan started (" + serverInfo.Traffic.Reason + "). Effective anticheat scanning is best performed while connected to a game server.", target.StartTime);
 				}
 				cancellationToken.ThrowIfCancellationRequested();
 
@@ -796,7 +860,8 @@ public static class ScannerEngine
 				Dictionary<string, object?> report = new Dictionary<string, object>
 				{
 					["scanner"] = "ACS",
-					["scannerVersion"] = "3.3.1-beta.1",
+					["scannerVersion"] = ScannerVersion,
+					["scannerBuild"] = ScannerBuild.Value,
 					["scanStages"] = stages.ToArray(),
 					["scanMode"] = "on-demand",
 					["databaseRevision"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(databaseJson))).ToLowerInvariant(),
@@ -823,11 +888,18 @@ public static class ScannerEngine
 					{
 						["distribution"] = engineIdentity.Distribution,
 						["family"] = engineIdentity.Family,
+						["nonSteamDistribution"] = engineIdentity.NonSteamDistribution,
 						["steamVerified"] = engineIdentity.SteamVerified,
 						["confidence"] = engineIdentity.Confidence,
 						["trust"] = engineIdentity.Trust,
 						["module"] = engineIdentity.EngineModule,
 						["buildDate"] = engineIdentity.EngineBuildDate,
+						["compiled"] = engineIdentity.EngineCompiled,
+						["buildNumber"] = engineIdentity.EngineBuildNumber,
+						["buildNumberSource"] = engineIdentity.EngineBuildNumberSource,
+						["version"] = engineIdentity.EngineVersion,
+						["versionSource"] = engineIdentity.EngineVersionSource,
+						["gameDirectory"] = engineIdentity.GameDirectory,
 						["fileVersion"] = engineIdentity.EngineFileVersion,
 						["sha256"] = engineIdentity.EngineSha256,
 						["launcherSha256"] = engineIdentity.LauncherSha256,
@@ -854,6 +926,32 @@ public static class ScannerEngine
 					["serverAddress"] = serverInfo.Address,
 					["serverName"] = serverInfo.Name,
 					["serverMap"] = serverInfo.Map,
+					["serverDetection"] = new Dictionary<string, object?>
+					{
+						["status"] = serverInfo.Status,
+
+						["address"] = serverInfo.Address,
+						["name"] = serverInfo.Name,
+						["map"] = serverInfo.Map,
+						["nameSource"] = serverInfo.NameSource,
+						["capturedAt"] = serverInfo.Traffic.CapturedAt.ToString("O"),
+						["method"] = "zero-privilege Valve A2S server query",
+						["packetsSent"] = serverInfo.Traffic.Sent,
+						["packetsReceived"] = serverInfo.Traffic.Received,
+						["sampleMs"] = serverInfo.Traffic.SampleMilliseconds,
+						["gameUdpPorts"] = serverInfo.Traffic.LocalPorts.ToArray(),
+						["reason"] = serverInfo.Traffic.Reason,
+						["folder"] = serverInfo.A2S?.Folder ?? "",
+						["game"] = serverInfo.A2S?.Game ?? "",
+						["players"] = serverInfo.A2S?.Players ?? 0,
+						["maxPlayers"] = serverInfo.A2S?.MaxPlayers ?? 0,
+						["bots"] = serverInfo.A2S?.Bots ?? 0,
+						["serverType"] = serverInfo.A2S?.ServerType ?? "",
+						["environment"] = serverInfo.A2S?.Environment ?? "",
+						["vac"] = serverInfo.A2S?.VacSecured ?? false,
+						["protocol"] = serverInfo.A2S?.Protocol ?? 0,
+						["version"] = serverInfo.A2S?.Version ?? ""
+					},
 					["gameRoot"] = target.Root,
 					["steamPath"] = ReadSteamPath() ?? "",
 					["configPath"] = FindConfigPath(target.Root) ?? "",
@@ -889,9 +987,8 @@ public static class ScannerEngine
 				};
 				cancellationToken.ThrowIfCancellationRequested();
 				string reportJson = JsonSerializer.Serialize(report, JsonOptions());
-				progress.Report("Waiting for your report upload decision...");
-				if (!await RequestUploadConsentAsync(reportJson, cancellationToken, confirmUpload))
-					return new ScanUploadResult(false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, null, UploadDeclined: true);
+				if (!uploadConsented)
+					return new ScanUploadResult(false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, null, UploadDeclined: true, ServerStatus: serverInfo.Status, ServerName: serverInfo.Name, ServerAddress: serverInfo.Address, ServerMap: serverInfo.Map);
 				cancellationToken.ThrowIfCancellationRequested();
 				progress.Report("Uploading report...");
 				string signature = string.Empty;
@@ -911,13 +1008,13 @@ public static class ScannerEngine
 				string uploadBody = await response.Content.ReadAsStringAsync(cancellationToken);
 				if (!response.IsSuccessStatusCode)
 				{
-					return new ScanUploadResult(Uploaded: false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, uploadBody);
+					return new ScanUploadResult(Uploaded: false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, uploadBody, ServerStatus: serverInfo.Status, ServerName: serverInfo.Name, ServerAddress: serverInfo.Address, ServerMap: serverInfo.Map);
 				}
 				using JsonDocument upload = JsonDocument.Parse(uploadBody);
 				JsonElement root = upload.RootElement;
 				if (!root.TryGetProperty("ok", out var accepted) || accepted.ValueKind != JsonValueKind.True)
 				{
-					return new ScanUploadResult(Uploaded: false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, "Server did not accept the report.");
+					return new ScanUploadResult(Uploaded: false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, "Server did not accept the report.", ServerStatus: serverInfo.Status, ServerName: serverInfo.Name, ServerAddress: serverInfo.Address, ServerMap: serverInfo.Map);
 				}
 				if (root.TryGetProperty("summary", out var serverSummary))
 				{
@@ -932,7 +1029,7 @@ public static class ScannerEngine
 					}
 				}
 				string relativeUrl = (root.TryGetProperty("url", out var urlElement) ? urlElement.GetString() : null);
-				return new ScanUploadResult(ReportUrl: MakeAbsoluteReportUrl(apiUrl, relativeUrl), Uploaded: true, Status: status, Detected: detected, Warnings: warnings, Processes: processes.Count, Drivers: drivers.Count, HlFiles: hlFiles.Count, Error: null);
+				return new ScanUploadResult(ReportUrl: MakeAbsoluteReportUrl(apiUrl, relativeUrl), Uploaded: true, Status: status, Detected: detected, Warnings: warnings, Processes: processes.Count, Drivers: drivers.Count, HlFiles: hlFiles.Count, Error: null, ServerStatus: serverInfo.Status, ServerName: serverInfo.Name, ServerAddress: serverInfo.Address, ServerMap: serverInfo.Map);
 			}
 		}
 		void Stage(string message)
@@ -951,15 +1048,6 @@ public static class ScannerEngine
 			stageWatch.Restart();
 			progress.Report(message);
 		}
-	}
-
-	private static async Task<bool> RequestUploadConsentAsync(string reportJson, CancellationToken cancellationToken, Func<string, CancellationToken, Task<bool>>? confirmUpload)
-	{
-		cancellationToken.ThrowIfCancellationRequested();
-		if (confirmUpload == null) return false;
-		var approved = await confirmUpload(reportJson, cancellationToken);
-		cancellationToken.ThrowIfCancellationRequested();
-		return approved;
 	}
 
 	private static HlTarget? FindHlTarget()
@@ -1024,7 +1112,12 @@ public static class ScannerEngine
 			{
 				try
 				{
-					text4 = process2.MainModule?.FileName;
+					// Works for 64-bit processes from this 32-bit app, where MainModule throws.
+					text4 = ModuleIntegrity.ProcessImagePath(num3);
+					if (string.IsNullOrWhiteSpace(text4))
+					{
+						text4 = process2.MainModule?.FileName;
+					}
 				}
 				catch
 				{
@@ -1076,7 +1169,8 @@ public static class ScannerEngine
 				string text = ModuleIntegrity.NormalizeModulePath(module.FileName ?? "");
 				FileHashes fileHashes = TryFileHashes(text);
 				FileMetadata fileMetadata = ReadFileMetadata(text);
-				bool flag = IsAuthenticodeValid(text);
+				uint signatureResult = AuthenticodeResult(text);
+				bool flag = signatureResult == 0;
 				bool flag2 = IsTrustedModule(module.ModuleName, text, fileMetadata.Signer, flag);
 				modules.Add(new Dictionary<string, object>
 				{
@@ -1093,16 +1187,13 @@ public static class ScannerEngine
 					["product"] = fileMetadata.Product,
 					["signer"] = fileMetadata.Signer,
 					["signatureValid"] = flag,
+					["signatureStatus"] = SignatureStatus(signatureResult),
 					["trusted"] = flag2
 				});
-				if (flag2)
-				{
-					MatchRules(database, "module", $"{fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {fileHashes.Crc32}", text, findings, findingKeys, "", $"{fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {fileHashes.Crc32}");
-				}
-				else
-				{
-					MatchRules(database, "module", $"{module.ModuleName} {text} {fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {fileHashes.Crc32} {fileMetadata.Company} {fileMetadata.Product} {fileMetadata.Signer}", text, findings, findingKeys, "", $"{fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {fileHashes.Crc32}");
-				}
+				// "trusted" is presentation metadata, never a reduced scanning surface. Attackers
+				// control filenames and install-directory contents, so every module is matched using
+				// its name/path metadata as well as its hashes.
+				MatchRules(database, "module", $"{module.ModuleName} {text} {fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {fileHashes.Crc32} {fileMetadata.Company} {fileMetadata.Product} {fileMetadata.Signer}", text, findings, findingKeys, "", $"{fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {fileHashes.Crc32}");
 			}
 		}
 		catch (Exception ex)
@@ -1133,8 +1224,9 @@ public static class ScannerEngine
 					{
 						string item = Convert.ToString(registryKey?.GetValue("DisplayName")) ?? "";
 						string text4 = NormalizeDriverPath(Convert.ToString(registryKey?.GetValue("ImagePath")) ?? "");
-						FileHashes item2 = (File.Exists(text4) ? TryFileHashes(text4) : FileHashes.Empty);
-						FileMetadata item3 = (File.Exists(text4) ? ReadFileMetadata(text4) : FileMetadata.Empty);
+						bool driverFileExists = File.Exists(ModuleIntegrity.NativeFilePath(text4));
+						FileHashes item2 = (driverFileExists ? TryFileHashes(text4) : FileHashes.Empty);
+						FileMetadata item3 = (driverFileExists ? ReadFileMetadata(text4) : FileMetadata.Empty);
 						results[i] = (Name: text3, Display: item, Path: text4, Hash: item2, Meta: item3);
 					}
 				});
@@ -1334,7 +1426,12 @@ public static class ScannerEngine
 					if (text2 == null || !string.Equals(text2, moduleName, StringComparison.OrdinalIgnoreCase))
 					{
 						string value = text2 ?? "unbacked memory (injected code)";
-						AddEngineFinding(findings, findingKeys, "acp-inline-hook", $"Inline hook on {moduleName}!{item3} — {item}", "DETECTED", "injected", "memory", $"{moduleName}!{item3} @0x{item4:X} -> 0x{num4.Value:X} ({value})", $"High-confidence ACS inline-hook scan: {item3} starts with a JMP/CALL trampoline redirecting it into {value} — {item} hook.", target.StartTime);
+						bool overlayModule = OverlayHookableModules.Contains(moduleName);
+						string severity = (overlayModule ? "WARNING" : "DETECTED");
+						string reason = (overlayModule
+							? $"Review evidence: {moduleName}!{item3} starts with a JMP/CALL trampoline redirecting into {value}. Overlays (Steam, NVIDIA, Discord, Xbox Game Bar, recorders) hook render and timing functions like this legitimately - and so do wallhacks. Confirm which process owns the hook before acting."
+							: $"High-confidence ACS inline-hook scan: {item3} starts with a JMP/CALL trampoline redirecting it into {value} — {item} hook.");
+						AddEngineFinding(findings, findingKeys, "acp-inline-hook", $"Inline hook on {moduleName}!{item3} — {item}", severity, "injected", "memory", $"{moduleName}!{item3} @0x{item4:X} -> 0x{num4.Value:X} ({value})", reason, target.StartTime);
 						hooked = true;
 						if (text == null)
 						{
@@ -1722,8 +1819,8 @@ public static class ScannerEngine
 		{
 			(string, float, string, string)[] array = new(string, float, string, string)[2]
 			{
-				("r_drawentities", 0f, "DETECTED", "Wallhack/Chams exploit: r_drawentities is set to 0 in live game memory"),
-				("gl_monolights", 1f, "DETECTED", "Fullbright exploit: gl_monolights is set to 1 in live game memory")
+				("r_drawentities", 0f, "WARNING", "Possible Wallhack/Chams state: r_drawentities appears to be 0 in live game memory"),
+				("gl_monolights", 1f, "WARNING", "Possible fullbright state: gl_monolights appears to be 1 in live game memory")
 			};
 			int num4 = (int)Math.Min(num2, 4194304L);
 			byte[] array2 = new byte[num4];
@@ -1786,9 +1883,9 @@ public static class ScannerEngine
 			{
 				string lowerName = item.FileName.ToLowerInvariant();
 				bool flag = source.Any((string p) => lowerName.Contains(p));
-				string severity = (flag ? "DETECTED" : "WARNING");
+				string severity = "WARNING";
 				double totalMinutes = (DateTimeOffset.UtcNow - item.DeletedAt).TotalMinutes;
-				AddEngineFinding(findings, findingKeys, "acp-usn-" + item.FileName, "Recently deleted executable file: " + item.FileName, severity, "filesystem-forensics", "execution-trace", $"{item.FileName} on {item.Volume} (deleted {totalMinutes:F1}m ago at {item.DeletedAt:u})", flag ? "Known cheat executable was deleted immediately before or during the scan session." : "An executable/library was deleted shortly before the scan. Suspect may have removed cheat binaries.", item.DeletedAt.ToString("O"));
+				AddEngineFinding(findings, findingKeys, "acp-usn-" + item.FileName, "Recently deleted executable file: " + item.FileName, severity, "filesystem-forensics", "execution-trace", $"{item.FileName} on {item.Volume} (deleted {totalMinutes:F1}m ago at {item.DeletedAt:u})", flag ? "The deleted filename resembles a known cheat name, but deletion history and a name alone are not proof." : "An executable/library was deleted shortly before the scan; review only if corroborated by live evidence.", item.DeletedAt.ToString("O"));
 			}
 		}
 		catch (Exception ex)
@@ -2161,6 +2258,33 @@ public static class ScannerEngine
 			select m).ToList();
 	}
 
+	/// <summary>
+	/// A module is integrity-verified only when it is actual game code: the launcher, an
+	/// integrity-critical engine module, or a module loaded from a mod folder. Steam ships
+	/// third-party runtimes (CEF: libcef/chromehtml/icudt, FFmpeg: avcodec/avformat/avutil)
+	/// in the install root; those are not game code and self-modify at runtime, so comparing
+	/// them only ever produces false "patched" findings.
+	/// </summary>
+	private static bool IsIntegrityVerifiedModule(string name, string path, string gameRoot, string launcherPath)
+	{
+		if (IntegrityCriticalModules.Contains(name, StringComparer.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+		if (string.Equals(path, launcherPath, StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+		foreach (string mod in GameModDirectories)
+		{
+			if (IsUnderDirectory(path, Path.Combine(gameRoot, mod)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static List<Dictionary<string, object?>> VerifyGameModules(HlTarget target, List<Dictionary<string, object?>> modules, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, List<string> notes)
 	{
 		List<Dictionary<string, object>> list = new List<Dictionary<string, object>>();
@@ -2178,7 +2302,7 @@ public static class ScannerEngine
 				string text = Convert.ToString(module.GetValueOrDefault("name")) ?? "";
 				string text2 = Convert.ToString(module.GetValueOrDefault("path")) ?? "";
 				long num2 = ToLong(module.GetValueOrDefault("baseAddress"));
-				if (string.IsNullOrWhiteSpace(text2) || num2 <= 0 || (!IntegrityCriticalModules.Contains<string>(text, StringComparer.OrdinalIgnoreCase) && !IsUnderDirectory(text2, target.Root) && !string.Equals(text2, target.Path, StringComparison.OrdinalIgnoreCase)))
+				if (string.IsNullOrWhiteSpace(text2) || num2 <= 0 || !IsIntegrityVerifiedModule(text, text2, target.Root, target.Path))
 				{
 					continue;
 				}
@@ -2198,19 +2322,24 @@ public static class ScannerEngine
 				{
 					continue;
 				}
+				bool overlayModule = OverlayHookableModules.Contains(text);
+				string patchedSeverity = (overlayModule ? "WARNING" : "DETECTED");
+				string patchedReason = (overlayModule
+					? "Review evidence: this render/OS module's code differs from disk. Steam, NVIDIA, Discord, Xbox Game Bar and recorder overlays legitimately hook these modules to draw over the game, which looks identical to an ESP. Confirm the hooking process before acting."
+					: "High-confidence ACS engine rule: the module's executable code in memory does not match the file it was loaded from, after accounting for relocation. Any inline hook, detour or mid-function patch produces this, regardless of how it was installed.");
 				if (result.Sites.Count > 0)
 				{
 					ModuleIntegrity.PatchSite patchSite = result.Sites[0];
 					string text3 = $"{patchSite.Nearest} at 0x{patchSite.Address:X} (disk {patchSite.OnDisk} -> live {patchSite.InMemory})";
-					AddEngineFinding(findings, findingKeys, "acp-module-code-patched", "Game module code modified in memory", "DETECTED", "injected", "module", text + ": " + text3, "High-confidence ACS engine rule: the module's executable code in memory does not match the file it was loaded from, after accounting for relocation. Any inline hook, detour or mid-function patch produces this, regardless of how it was installed.", target.StartTime);
+					AddEngineFinding(findings, findingKeys, "acp-module-code-patched", "Game module code modified in memory", patchedSeverity, "injected", "module", text + ": " + text3, patchedReason, target.StartTime);
 				}
 				foreach (string item in result.HookedImports.Take(6))
 				{
-					AddEngineFinding(findings, findingKeys, "acp-iat-hook", "Import redirected to unmapped memory", "DETECTED", "injected", "module", text + ": " + item, "High-confidence ACS engine rule: an import points at memory that belongs to no loaded module. The loader never maps code there, so this is an injected hook.", target.StartTime);
+					AddEngineFinding(findings, findingKeys, "acp-iat-hook", "Import redirected to unmapped memory", patchedSeverity, "injected", "module", text + ": " + item, patchedReason, target.StartTime);
 				}
 				foreach (string item2 in result.HookedExports.Take(6))
 				{
-					AddEngineFinding(findings, findingKeys, "acp-eat-hook", "Export table entry rewritten", "DETECTED", "injected", "module", text + ": " + item2, "High-confidence ACS engine rule: an export address differs from the file on disk, so every later lookup of that function is redirected.", target.StartTime);
+					AddEngineFinding(findings, findingKeys, "acp-eat-hook", "Export table entry rewritten", patchedSeverity, "injected", "module", text + ": " + item2, patchedReason, target.StartTime);
 				}
 			}
 		}
@@ -2244,7 +2373,7 @@ public static class ScannerEngine
 					if (!IsTrustedHandleHolder(item.ProcessPath, item.ProcessName))
 					{
 						bool flag = item.Access.Contains("VM_WRITE") || item.Access.Contains("ALL_ACCESS");
-						AddEngineFinding(findings, findingKeys, flag ? "acp-external-writer" : "acp-external-reader", flag ? "External process can write hl.exe memory" : "External process is reading hl.exe memory", flag ? "DETECTED" : "WARNING", "injected", "process", $"{item.ProcessName} (pid {item.ProcessId}) [{item.Access}] {item.ProcessPath}", "An unrecognised process holds a memory-access handle on the live game. External cheats read the game this way without injecting anything, which is why no module or file evidence exists for them. Review the process before acting.", target.StartTime);
+						AddEngineFinding(findings, findingKeys, flag ? "acp-external-writer" : "acp-external-reader", flag ? "External process can write hl.exe memory" : "External process is reading hl.exe memory", "WARNING", "review", "process", $"{item.ProcessName} (pid {item.ProcessId}) [{item.Access}] {item.ProcessPath}", "An unrecognised process holds a memory-access handle on the live game. Debuggers, security tools and overlays can do this too, so require corroborating evidence before enforcement.", target.StartTime);
 					}
 				}
 			}
@@ -2256,7 +2385,7 @@ public static class ScannerEngine
 			dictionary["foreignThreads"] = ((IEnumerable<SystemProbe.ForeignThread>)list2).Select((Func<SystemProbe.ForeignThread, object>)((SystemProbe.ForeignThread t) => $"tid {t.ThreadId} start 0x{t.StartAddress:X}")).ToList();
 			foreach (SystemProbe.ForeignThread item2 in list2)
 			{
-				AddEngineFinding(findings, findingKeys, "acp-foreign-thread", "Thread running from unmapped memory in hl.exe", "DETECTED", "injected", "memory", $"tid {item2.ThreadId} start 0x{item2.StartAddress:X}", "High-confidence ACS engine rule: a thread's start address belongs to no loaded module. Every legitimate thread begins inside a mapped image, so this is manually mapped or remotely created code executing inside the game.", target.StartTime);
+				AddEngineFinding(findings, findingKeys, "acp-foreign-thread", "Thread start address is outside mapped modules", "WARNING", "review", "memory", $"tid {item2.ThreadId} start 0x{item2.StartAddress:X}", "Unmapped thread starts can indicate injected code, but runtime-generated code and instrumentation can look the same. Corroborate with executable-memory provenance or another detector.", target.StartTime);
 			}
 			SystemProbe.Rect? rect = ParseBounds(windowInfo.Bounds);
 			List<SystemProbe.OverlayWindow> list3 = ((!rect.HasValue) ? new List<SystemProbe.OverlayWindow>() : SystemProbe.FindOverlayWindows(target.Process.Id, rect.Value));
@@ -2342,7 +2471,7 @@ public static class ScannerEngine
 		}
 	}
 
-	private static void RunAcpEvidenceEngine(HlTarget target, List<Dictionary<string, object?>> modules, List<Dictionary<string, object?>> hlFiles, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys)
+	private static void RunAcpEvidenceEngine(HlTarget target, List<Dictionary<string, object?>> modules, List<Dictionary<string, object?>> hlFiles, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, bool nonSteamDistribution = false)
 	{
 		string text = ReadSteamPath();
 		foreach (Dictionary<string, object> module in modules)
@@ -2362,7 +2491,38 @@ public static class ScannerEngine
 			bool flag4 = IsWindowsSystemModule(text2);
 			if (!flag4 && IsTrustedSigner(text4) && !flag)
 			{
-				AddEngineFinding(findings, findingKeys, "acp-forged-signature", "Forged signer on module in hl.exe", "DETECTED", "injected", "module", $"{text3} claims '{text4}' — {text2}", "High-confidence ACS engine rule: module advertises a trusted publisher but its digital signature fails WinVerifyTrust validation.", target.StartTime);
+				// A trusted publisher's name on a signature that does not validate. Which way it
+				// fails decides what it means - see SignatureStatus.
+				string signatureStatus = Convert.ToString(module.GetValueOrDefault("signatureStatus")) ?? "";
+				if (signatureStatus == "modified")
+				{
+					// Genuinely signed, then changed. Every non-Steam edition ships Valve's engine
+					// patched like this, so inside an identified non-Steam client's own install it is
+					// that whitelisted client, not something to review - no finding; the module's
+					// signature status and hash stay in the report's module list. Anywhere else - a
+					// Steam install, an unattributed client, a file outside the game folder -
+					// nothing explains it, so it is reviewed.
+					bool expected = flag3 && nonSteamDistribution;
+					if (!expected)
+					{
+						AddEngineFinding(findings, findingKeys, "acs-signed-module-modified", "Publisher-signed module modified after signing",
+							"WARNING", "integrity", "module",
+							$"{text3} signed by '{text4}', contents changed — {text2}",
+							"This file carries a genuine publisher signature, but its contents were changed after it was signed, and nothing about this install explains the change. A modified engine or client module can carry aim, wallhack or speed patches. Compare its SHA-256 against the known build.",
+							target.StartTime);
+					}
+				}
+				else if (signatureStatus == "untrusted")
+				{
+					AddEngineFinding(findings, findingKeys, "acp-forged-signature", "Forged signer on module in hl.exe", "DETECTED", "injected", "module", $"{text3} claims '{text4}' — {text2}", "High-confidence ACS engine rule: the module presents a certificate in a trusted publisher's name that does not chain to a trusted root, which is how a forged signature presents. A modified genuine file fails differently and is not reported here.", target.StartTime);
+				}
+				else
+				{
+					AddEngineFinding(findings, findingKeys, "acs-signature-unverifiable", "Publisher signature could not be validated", "WARNING", "integrity", "module",
+						$"{text3} claims '{text4}' ({signatureStatus}) — {text2}",
+						"The module names a trusted publisher, but Windows could not validate the signature (expired, revoked, or unreadable). This is not proof of forgery; review the file's hash.",
+						target.StartTime);
+				}
 			}
 			else if (flag3 && text3.Equals("opengl32.dll", StringComparison.OrdinalIgnoreCase))
 			{
@@ -2667,6 +2827,90 @@ public static class ScannerEngine
 		}
 	}
 
+	private static void ScanRecycleBin(JsonElement database, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, List<string> notes)
+	{
+		try
+		{
+			foreach (DriveInfo drive in DriveInfo.GetDrives())
+			{
+				if (drive.DriveType != DriveType.Fixed || !drive.IsReady)
+				{
+					continue;
+				}
+				string recycleRoot = Path.Combine(drive.RootDirectory.FullName, "$Recycle.Bin");
+				if (!Directory.Exists(recycleRoot))
+				{
+					continue;
+				}
+				string[] userDirs;
+				try
+				{
+					userDirs = Directory.GetDirectories(recycleRoot);
+				}
+				catch
+				{
+					continue;
+				}
+				foreach (string userDir in userDirs)
+				{
+					string[] metaFiles;
+					try
+					{
+						metaFiles = Directory.GetFiles(userDir, "$I*");
+					}
+					catch
+					{
+						continue;
+					}
+					foreach (string metaFile in metaFiles)
+					{
+						try
+						{
+							byte[] bytes = File.ReadAllBytes(metaFile);
+							if (bytes.Length < 28)
+							{
+								continue;
+							}
+							ulong version = BitConverter.ToUInt64(bytes, 0);
+							long fileTime = BitConverter.ToInt64(bytes, 16);
+							DateTime deletedAt = DateTime.FromFileTimeUtc(fileTime);
+							string origPath = "";
+							if (version >= 2 && bytes.Length >= 28)
+							{
+								int charCount = BitConverter.ToInt32(bytes, 24);
+								int byteCount = Math.Min(charCount * 2, bytes.Length - 28);
+								origPath = Encoding.Unicode.GetString(bytes, 28, byteCount).TrimEnd('\0');
+							}
+							else if (version == 1 && bytes.Length >= 24)
+							{
+								origPath = Encoding.Unicode.GetString(bytes, 24, bytes.Length - 24).TrimEnd('\0');
+							}
+							if (string.IsNullOrWhiteSpace(origPath))
+							{
+								continue;
+							}
+							string fileName = Path.GetFileName(origPath);
+							string timeStr = deletedAt.ToString("O");
+							string surface = $"{fileName} {origPath}";
+							MatchRules(database, "download-trace", surface, $"{fileName} — {origPath} (in trash)", findings, findingKeys, timeStr);
+							if (LooksCheatNamed(fileName) || fileName.Contains("unknowncheats", StringComparison.OrdinalIgnoreCase) || fileName.Contains("alternative", StringComparison.OrdinalIgnoreCase))
+							{
+								AddEngineFinding(findings, findingKeys, "acp-trash-cheat-file", "Cheat file in Recycle Bin (" + fileName + ")", "WARNING", "installedInOs", "download-trace", $"{fileName} — {origPath} (in trash)", "A cheat file or cheat download archive was found in the Windows Recycle Bin (deleted " + deletedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + ").", timeStr);
+							}
+						}
+						catch
+						{
+						}
+					}
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			notes.Add("Unable to scan Recycle Bin: " + ex.Message);
+		}
+	}
+
 	private static void MatchRules(JsonElement database, string source, string surface, string subject, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, string time = "", string hashSurface = "")
 	{
 		_scanToken.ThrowIfCancellationRequested();
@@ -2692,9 +2936,9 @@ public static class ScannerEngine
 				continue;
 			}
 			string item = $"{item2.Id}|{source}|{subject}";
-			if (!findingKeys.Contains(item) && RuleConditionsMatch(item2, source, surface, lowSurface, hashSurface))
+			if (!findingKeys.Contains(item) && RuleConditionsMatch(item2, source, surface, lowSurface, hashSurface, out int matchedHashLength))
 			{
-				string text = ((item2.Severity == "DETECTED" && !IsStrongEvidence(source, item2.Severity, item2.Confidence)) ? "WARNING" : item2.Severity);
+				string text = ((item2.Severity == "DETECTED" && !IsStrongEvidence(item2.Severity, item2.Confidence, matchedHashLength)) ? "WARNING" : item2.Severity);
 				findingKeys.Add(item);
 				string text2;
 				if (text == "DETECTED")
@@ -2724,14 +2968,32 @@ public static class ScannerEngine
 		}
 	}
 
-	private static bool RuleConditionsMatch(CompiledRule rule, string source, string surface, string lowSurface, string hashSurface)
+	// Small deterministic seam for regression tests; it exercises the same compiled rule and
+	// severity path as a live scan without opening another process.
+	internal static (bool Matched, int HashLength, string Severity, bool Valid) EvaluateRuleForTest(
+		string ruleJson, string source, string surface, string hashSurface)
 	{
+		using JsonDocument document = JsonDocument.Parse("{\"signatures\":[" + ruleJson + "]}");
+		RuleSet set = RuleSet.Build(document.RootElement);
+		CompiledRule rule = set.All.Single();
+		int hashLength = 0;
+		bool matched = rule.Valid && RuleConditionsMatch(rule, source, surface, surface.ToLowerInvariant(), hashSurface, out hashLength);
+		string severity = matched && rule.Severity == "DETECTED" && !IsStrongEvidence(rule.Severity, rule.Confidence, hashLength)
+			? "WARNING" : rule.Severity;
+		return (matched, hashLength, severity, rule.Valid);
+	}
+
+	private static bool RuleConditionsMatch(CompiledRule rule, string source, string surface, string lowSurface, string hashSurface, out int matchedHashLength)
+	{
+		matchedHashLength = 0;
+		int applicable = 0;
 		foreach (MatchCondition condition in rule.Conditions)
 		{
 			if (!MatchKeyAppliesToSource(condition.Key, source))
 			{
 				continue;
 			}
+			applicable++;
 			bool flag;
 			switch (condition.Key)
 			{
@@ -2752,38 +3014,92 @@ public static class ScannerEngine
 			if (flag)
 			{
 				string[] actual = hashSurface.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-				if (!condition.Values.Any((string value) => actual.Contains<string>(value, StringComparer.OrdinalIgnoreCase)))
+				if (!HashValueMatches(condition.Values, actual, out int conditionHashLength))
 				{
-					continue;
+					return false;
 				}
-				return true;
+				matchedHashLength = Math.Max(matchedHashLength, conditionHashLength);
+				continue;
 			}
 			if (condition.IsRegex)
 			{
+				bool conditionMatched = false;
 				foreach (Regex regex in condition.Regexes)
 				{
 					try
 					{
 						if (regex.IsMatch(surface))
 						{
-							return true;
+							conditionMatched = true;
+							break;
 						}
 					}
 					catch (RegexMatchTimeoutException)
 					{
 					}
 				}
+				if (!conditionMatched)
+				{
+					return false;
+				}
 				continue;
 			}
+			bool valueMatched = false;
 			foreach (string value in condition.Values)
 			{
 				if (value.Length > 0 && lowSurface.IndexOf(value, StringComparison.Ordinal) >= 0)
 				{
-					return true;
+					valueMatched = true;
+					break;
+				}
+			}
+			if (!valueMatched)
+			{
+				return false;
+			}
+		}
+		return applicable > 0;
+	}
+
+	/// <summary>
+	/// Match a rule's hash values against the hashes of the current artifact.
+	/// A full digest matches exactly; a truncated digest matches as a prefix. Server-side
+	/// cheat databases (ReChecker and its forks) publish 4-byte MD5s, so prefix matching turns
+	/// a filename-only signature into real file evidence and removes its false positives.
+	/// Values shorter than the 8 hex characters (4 bytes) those databases use are ignored so a
+	/// stray short string cannot match by accident.
+	/// </summary>
+	private static bool HashValueMatches(List<string> values, string[] actual, out int matchedLength)
+	{
+		matchedLength = 0;
+		foreach (string value in values)
+		{
+			if (value.Length < 8 || value.Length > 64 || !IsHex(value))
+			{
+				continue;
+			}
+			foreach (string candidate in actual)
+			{
+				if (candidate.Length >= value.Length
+					&& candidate.AsSpan(0, value.Length).Equals(value.AsSpan(), StringComparison.OrdinalIgnoreCase))
+				{
+					matchedLength = Math.Max(matchedLength, value.Length);
 				}
 			}
 		}
-		return false;
+		return matchedLength > 0;
+	}
+
+	private static bool IsHex(string value)
+	{
+		foreach (char character in value)
+		{
+			if (!Uri.IsHexDigit(character))
+			{
+				return false;
+			}
+		}
+		return value.Length > 0;
 	}
 
 	private static string[] CollectStrings(JsonElement element)
@@ -2807,25 +3123,16 @@ public static class ScannerEngine
 		return Array.Empty<string>();
 	}
 
-	private static bool IsStrongEvidence(string source, string configuredSeverity, string confidence)
+	private static bool IsStrongEvidence(string configuredSeverity, string confidence, int matchedHashLength)
 	{
 		if (configuredSeverity != "DETECTED" || confidence != "high")
 		{
 			return false;
 		}
-		bool result;
-		switch (source)
-		{
-		case "module":
-		case "driver":
-		case "memory":
-			result = true;
-			break;
-		default:
-			result = false;
-			break;
-		}
-		return result;
+		// Names and paths are triage evidence, not proof. Require at least a complete MD5
+		// before a database rule can produce a red verdict. Four-byte ReChecker prefixes
+		// remain useful review evidence but carry too much collision risk for DETECTED.
+		return matchedHashLength >= 32;
 	}
 
 	private static string CategoryForSource(string source, string subject = "")
@@ -3088,7 +3395,7 @@ public static class ScannerEngine
 		_scanToken.ThrowIfCancellationRequested();
 		try
 		{
-			FileInfo fileInfo = new FileInfo(path);
+			FileInfo fileInfo = new FileInfo(ModuleIntegrity.NativeFilePath(path));
 			if (!fileInfo.Exists || fileInfo.Length <= 0 || fileInfo.Length > 67108864)
 			{
 				return FileHashes.Empty;
@@ -3098,7 +3405,9 @@ public static class ScannerEngine
 			{
 				return value;
 			}
-			FileHashes fileHashes = HashFileStreaming(path);
+			// Hash the file actually opened above (the native path under WOW64), not the
+			// original path, which a 32-bit process would silently read from SysWOW64.
+			FileHashes fileHashes = HashFileStreaming(fileInfo.FullName);
 			SetHashCache(key, fileHashes);
 			return fileHashes;
 		}
@@ -3214,6 +3523,7 @@ public static class ScannerEngine
 
 	private static FileMetadata ReadFileMetadata(string path)
 	{
+		path = ModuleIntegrity.NativeFilePath(path);
 		if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
 		{
 			return FileMetadata.Empty;
@@ -3232,14 +3542,30 @@ public static class ScannerEngine
 		catch
 		{
 		}
+		// The Authenticode signer of a PE file.
+		//
+		// This used to call X509CertificateLoader.LoadCertificateFromFile, which reads a
+		// standalone certificate file (.cer/.pem) - pointed at a signed .exe or .dll it throws
+		// "Cannot find the requested object" every time. So the signer was empty for every
+		// module and driver ever scanned: verified on a genuine Steam hl.exe, which Windows
+		// reports as validly signed by Valve Corp. while the old call threw. The "trusted
+		// vendor" branch of IsTrustedModule could therefore never pass, and nothing could tell
+		// a Valve-signed engine from a repacked one.
+		//
+		// CreateFromSignedFile is the call that extracts the embedded signing certificate. It
+		// is marked obsolete in favour of the loader API, but the loader has no equivalent for
+		// PE signatures. It does NOT verify anything - it only names the certificate - which is
+		// why every consumer pairs this name with IsAuthenticodeValid before believing it.
 		try
 		{
-			using X509Certificate2 x509Certificate = X509CertificateLoader.LoadCertificateFromFile(path);
+#pragma warning disable SYSLIB0057
+			using X509Certificate2 x509Certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
+#pragma warning restore SYSLIB0057
 			signer = x509Certificate.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
 		}
 		catch
 		{
-			signer = "";
+			signer = "";   // unsigned, or a signature that does not parse
 		}
 		return new FileMetadata(fileVersion, company, product, signer);
 	}
@@ -3445,7 +3771,7 @@ public static class ScannerEngine
 	private static bool LooksCheatNamed(string value)
 	{
 		string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(value);
-		return Regex.IsMatch(fileNameWithoutExtension, "(?i)(^|[^a-z0-9])(aimbot|wallhack|triggerbot|speedhack|esp|oxware|evol|alternative\\s*hack|r-?aimbot|leis|organner|cdhack|badboy|cheatengine|vehdebug|dbvm|dbk32|dbk64|injector)([^a-z0-9]|$)", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100L));
+		return Regex.IsMatch(fileNameWithoutExtension, "(?i)(^|[^a-z0-9])(aimbot|wallhack|triggerbot|speedhack|esp|oxware|evol|alternative|unknowncheats|r-?aimbot|leis|organner|cdhack|badboy|cheatengine|vehdebug|dbvm|dbk32|dbk64|injector)([^a-z0-9]|$)", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100L));
 	}
 
 	private static IEnumerable<string> DownloadFolders()
@@ -3465,7 +3791,7 @@ public static class ScannerEngine
 			where s.Length > 0
 			select s).ToList();
 		string surface = string.Join(" ", list) + " " + gameRoot + " " + windowTitle;
-		if (ContainsAny(surface, "nextclient"))
+		if (ContainsAny(surface, "nextclient", "nitro_api", "next_engine", "next_lib", "filesystem_proxy"))
 		{
 			return "Counter-Strike: 1.6 (NextClient / Non-Steam)";
 		}
@@ -3525,258 +3851,80 @@ public static class ScannerEngine
 		return needles.Any((string n) => surface.Contains(n, StringComparison.OrdinalIgnoreCase));
 	}
 
-	private static ConnectedServer DetectConnectedServer(HlTarget target, List<string> notes)
+	/// <summary>
+	/// The server the game is joined to right now, from its live UDP traffic (see GameTraffic),
+	/// plus the engine's live version string. Replaces a search of game memory for any
+	/// "ip:port" text, which found server-browser entries and servers left long ago.
+	/// </summary>
+	private static ConnectedServer DetectConnectedServer(HlTarget target, List<string> notes, CancellationToken cancellationToken)
 	{
-		string text = FindGameServerEndpointUdp(target.Process.Id) ?? FindGameServerAddressInMemory(target);
-		if (string.IsNullOrEmpty(text))
-		{
-			return new ConnectedServer("", "", "");
-		}
-		var (name, map) = QueryServerInfoA2S(text, notes);
-		return new ConnectedServer(text, name, map);
-	}
-
-	[DllImport("iphlpapi.dll", SetLastError = true)]
-	private static extern uint GetExtendedUdpTable(nint pUdpTable, ref int dwOutBufLen, bool sort, int ipVersion, int tblClass, int reserved);
-
-	private static string? FindGameServerEndpointUdp(int pid)
-	{
+		string gameDirectory = "";
 		try
 		{
-			int dwOutBufLen = 0;
-			GetExtendedUdpTable(IntPtr.Zero, ref dwOutBufLen, sort: true, 2, 1, 0);
-			if (dwOutBufLen <= 0)
+			foreach (ProcessModule module in target.Process.Modules)
 			{
-				return null;
-			}
-			nint num = Marshal.AllocHGlobal(dwOutBufLen);
-			try
-			{
-				if (GetExtendedUdpTable(num, ref dwOutBufLen, sort: true, 2, 1, 0) != 0)
+				if (string.Equals(module.ModuleName, "client.dll", StringComparison.OrdinalIgnoreCase))
 				{
-					return null;
-				}
-				int num2 = Marshal.ReadInt32(num);
-				for (int i = 0; i < num2; i++)
-				{
-					nint ptr = num + 4 + i * 20;
-					if (Marshal.ReadInt32(ptr, 16) != pid)
+					gameDirectory = EngineIdentity.GameDirectoryOf(module.FileName ?? "", target.Root);
+					if (gameDirectory != "")
 					{
-						continue;
-					}
-					uint num3 = (uint)Marshal.ReadInt32(ptr, 8);
-					int num4 = PortFromNetworkOrder(Marshal.ReadInt32(ptr, 12));
-					if (num3 != 0 && num4 > 0)
-					{
-						IPAddress value = new IPAddress(num3);
-						if (IsPublicGameAddress($"{value}:{num4}"))
-						{
-							return $"{value}:{num4}";
-						}
+						break;
 					}
 				}
-			}
-			finally
-			{
-				Marshal.FreeHGlobal(num);
 			}
 		}
 		catch
 		{
+			// the version string is then simply not located; the connection read does not need it
 		}
-		return null;
-	}
 
-	private static int PortFromNetworkOrder(int raw)
-	{
-		return (ushort)IPAddress.NetworkToHostOrder((short)(raw & 0xFFFF));
-	}
+		var (patchVersion, _, _) = EngineIdentity.ReadVersionFile(target.Root, gameDirectory);
+		string liveVersion = LiveEngineState.ReadVersion(target.Process, patchVersion);
 
-	private static string? FindGameServerAddressInMemory(HlTarget target)
-	{
-		nint num = OpenProcess(1040, bInheritHandle: false, target.Process.Id);
-		if (num == IntPtr.Zero)
+		GameTraffic.Result traffic = GameTraffic.Capture(target.Process.Id, cancellationToken);
+		if (traffic.Status != "connected")
 		{
-			return null;
-		}
-		try
-		{
-			Dictionary<string, int> dictionary = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-			nint lpAddress = IntPtr.Zero;
-			nuint dwLength = (nuint)Marshal.SizeOf<MemoryBasicInformation>();
-			long num2 = 0L;
-			MemoryBasicInformation lpBuffer;
-			while (VirtualQueryEx(num, lpAddress, out lpBuffer, dwLength) != UIntPtr.Zero && num2 < 268435456)
+			if (traffic.Status == "unverified")
 			{
-				long num3 = ((IntPtr)lpBuffer.BaseAddress).ToInt64();
-				long num4 = (long)((UIntPtr)lpBuffer.RegionSize).ToUInt64();
-				if (num4 <= 0)
-				{
-					break;
-				}
-				if (lpBuffer.State == 4096 && (lpBuffer.Protect & 0x100) == 0 && (lpBuffer.Protect & 1) == 0 && (lpBuffer.Protect & 0xCC) != 0 && num4 <= 33554432)
-				{
-					byte[] array = new byte[num4];
-					if (ReadProcessMemory(num, lpBuffer.BaseAddress, array, (int)num4, out var lpNumberOfBytesRead) && lpNumberOfBytesRead > 0)
-					{
-						if (lpNumberOfBytesRead < array.Length)
-						{
-							Array.Resize(ref array, lpNumberOfBytesRead);
-						}
-						string input = Encoding.ASCII.GetString(array);
-						foreach (Match item in ServerEndpointRegex.Matches(input))
-						{
-							dictionary[item.Value] = ((!dictionary.TryGetValue(item.Value, out var value)) ? 1 : (value + 1));
-						}
-						num2 += lpNumberOfBytesRead;
-					}
-				}
-				long num5 = num3 + num4;
-				if (num5 <= num3)
-				{
-					break;
-				}
-				lpAddress = new IntPtr(num5);
+				notes.Add("Server connection could not be verified: " + traffic.Reason);
 			}
-			return (dictionary.Count == 0) ? null : (from kv in dictionary
-				where IsPublicGameAddress(kv.Key)
-				orderby kv.Value descending
-				select kv.Key).FirstOrDefault();
+			return new ConnectedServer(traffic.Status, "", "", "", "", traffic, liveVersion);
 		}
-		catch
+
+		ValveA2S.ServerInfo a2s = traffic.A2S ?? ValveA2S.Query(traffic.Endpoint);
+		string name = a2s.Success ? a2s.Name : "";
+		string map = a2s.Success ? a2s.Map : "";
+		string nameSource = a2s.Success ? "server reply (A2S_INFO)" : "the server did not answer the info query";
+		if (!a2s.Success && !string.IsNullOrEmpty(a2s.Error))
 		{
-			return null;
+			notes.Add($"A2S query note for {traffic.Endpoint}: {a2s.Error}");
 		}
-		finally
-		{
-			CloseHandle(num);
-		}
+		return new ConnectedServer("connected", traffic.Endpoint, name, map, nameSource, traffic, liveVersion, a2s);
 	}
 
-	private static bool IsPublicGameAddress(string endpoint)
+	/// <summary>The one-line server description shown in the app's evidence log.</summary>
+	private static string DescribeServer(ConnectedServer server)
 	{
-		string[] array = endpoint.Split(':');
-		if (array.Length != 2 || !int.TryParse(array[1], out var result) || result < 26000 || result > 28999)
+		if (server.Status == "connected")
 		{
-			return false;
-		}
-		if (!IPAddress.TryParse(array[0], out IPAddress address) || address.AddressFamily != AddressFamily.InterNetwork)
-		{
-			return false;
-		}
-		byte[] addressBytes = address.GetAddressBytes();
-		if (addressBytes[0] == 0 || addressBytes[0] == 127 || addressBytes[0] == byte.MaxValue)
-		{
-			return false;
-		}
-		if (addressBytes[0] == 10 || (addressBytes[0] == 192 && addressBytes[1] == 168))
-		{
-			return false;
-		}
-		if (addressBytes[0] == 172 && addressBytes[1] >= 16 && addressBytes[1] <= 31)
-		{
-			return false;
-		}
-		if (addressBytes[0] == 169 && addressBytes[1] == 254)
-		{
-			return false;
-		}
-		if (addressBytes[0] == 100 && addressBytes[1] >= 64 && addressBytes[1] <= 127)
-		{
-			return false;
-		}
-		return true;
-	}
-
-	private static (string Name, string Map) QueryServerInfoA2S(string address, List<string> notes)
-	{
-		try
-		{
-			string[] array = address.Split(':');
-			if (array.Length != 2 || !int.TryParse(array[1], out var result) || !IPAddress.TryParse(array[0], out IPAddress address2))
+			var desc = $"Joined {Or(server.Name, "(name not reported)")} — {server.Address}";
+			if (!string.IsNullOrWhiteSpace(server.Map)) desc += $" — {server.Map}";
+			if (server.A2S is { Success: true } a2s)
 			{
-				return (Name: "", Map: "");
+				desc += $" ({a2s.Players}/{a2s.MaxPlayers} players";
+				if (!string.IsNullOrWhiteSpace(a2s.Environment) && a2s.Environment != "Unknown") desc += $", {a2s.Environment}";
+				if (a2s.VacSecured) desc += ", VAC";
+				desc += ")";
 			}
-			using UdpClient udpClient = new UdpClient(AddressFamily.InterNetwork);
-			udpClient.Client.ReceiveTimeout = 1500;
-			udpClient.Client.SendTimeout = 1500;
-			IPEndPoint endPoint = new IPEndPoint(address2, result);
-			byte[] array2 = BuildA2SRequest(ReadOnlySpan<byte>.Empty);
-			for (int i = 0; i < 2; i++)
-			{
-				udpClient.Send(array2, array2.Length, endPoint);
-				byte[] array3;
-				try
-				{
-					IPEndPoint remoteEP = null;
-					array3 = udpClient.Receive(ref remoteEP);
-				}
-				catch (SocketException)
-				{
-					return (Name: "", Map: "");
-				}
-				if (array3.Length < 6 || array3[0] != byte.MaxValue || array3[1] != byte.MaxValue || array3[2] != byte.MaxValue || array3[3] != byte.MaxValue)
-				{
-					return (Name: "", Map: "");
-				}
-				int num = 4;
-				if (array3[num] == 65 && array3.Length >= num + 5)
-				{
-					array2 = BuildA2SRequest(array3.AsSpan(num + 1, 4));
-					continue;
-				}
-				if (array3[num] == 73)
-				{
-					num += 2;
-					string item = ReadNullTerminatedAscii(array3, ref num);
-					string item2 = ReadNullTerminatedAscii(array3, ref num);
-					return (Name: item, Map: item2);
-				}
-				if (array3[num] == 109)
-				{
-					num += 5;
-					ReadNullTerminatedAscii(array3, ref num);
-					string item3 = ReadNullTerminatedAscii(array3, ref num);
-					string item4 = ReadNullTerminatedAscii(array3, ref num);
-					return (Name: item3, Map: item4);
-				}
-				return (Name: "", Map: "");
-			}
+			return desc;
 		}
-		catch (Exception ex2)
-		{
-			notes.Add("A2S query failed for " + address + ": " + ex2.Message);
-		}
-		return (Name: "", Map: "");
+		if (server.Status == "not-connected") return "No Server Detected";
+		return "Game connection not verified: " + server.Traffic.Reason;
 	}
 
-	private static byte[] BuildA2SRequest(ReadOnlySpan<byte> challenge)
+	private static string Or(string value, string fallback)
 	{
-		byte[] bytes = Encoding.ASCII.GetBytes("Source Engine Query\0");
-		byte[] array = new byte[5 + bytes.Length + challenge.Length];
-		array[0] = byte.MaxValue;
-		array[1] = byte.MaxValue;
-		array[2] = byte.MaxValue;
-		array[3] = byte.MaxValue;
-		array[4] = 84;
-		bytes.CopyTo(array, 5);
-		challenge.CopyTo(array.AsSpan(5 + bytes.Length));
-		return array;
-	}
-
-	private static string ReadNullTerminatedAscii(byte[] data, ref int offset)
-	{
-		int num = offset;
-		while (offset < data.Length && data[offset] != 0)
-		{
-			offset++;
-		}
-		string result = Encoding.UTF8.GetString(data, num, Math.Min(offset, data.Length) - num);
-		if (offset < data.Length)
-		{
-			offset++;
-		}
-		return result;
+		return string.IsNullOrWhiteSpace(value) ? fallback : value;
 	}
 
 	private static string DetectRenderMode(List<Dictionary<string, object?>> modules)
@@ -4315,11 +4463,86 @@ public static class ScannerEngine
 	[DllImport("user32.dll")]
 	private static extern bool SetForegroundWindow(nint hWnd);
 
+	/// <summary>
+	/// The version from the project file - one source, instead of a string literal in the
+	/// report that had to be edited by hand and was not.
+	/// </summary>
+	private static readonly string ScannerVersion =
+		(typeof(ScannerEngine).Assembly
+			.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+			.OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+			.FirstOrDefault()?.InformationalVersion ?? "0.0.0")
+		.Split('+')[0];
+
+	/// <summary>
+	/// Fingerprint of the exact executable that ran the scan: the first 12 hex digits of its
+	/// SHA-256.
+	///
+	/// A version number names a release, not a binary. Two different builds of this app both
+	/// reported "1.0.0" and scanned the same client to different verdicts, and nothing in
+	/// either report could tell them apart. The fingerprint can: identical builds always
+	/// match, and any rebuild changes it.
+	/// </summary>
+	private static readonly Lazy<string> ScannerBuild = new(() =>
+	{
+		try
+		{
+			string? exe = Environment.ProcessPath;
+			if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
+			{
+				return "unknown";
+			}
+			using FileStream stream = File.OpenRead(exe);
+			return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()[..12];
+		}
+		catch
+		{
+			return "unknown";
+		}
+	});
+
 	private static bool IsAuthenticodeValid(string path)
 	{
+		return AuthenticodeResult(path) == 0;
+	}
+
+	/// <summary>
+	/// Why a file's signature does or does not validate, as one word.
+	///
+	/// "Not valid" used to be a single answer, and it was treated as forgery. But the two
+	/// common failures mean opposite things. A certificate that claims a publisher and does
+	/// not chain to a trusted root is a forgery - someone made a certificate that says Valve.
+	/// A certificate that does chain, over contents that no longer match it, is a real
+	/// signed file that was modified afterwards. The ESK client's hw.dll is the second kind
+	/// (Windows: HashMismatch, signed "CN=Valve" in 2009): Valve's own engine, patched the
+	/// way every non-Steam edition patches it. Calling that a forged signature put a
+	/// DETECTED on a player for running an ordinary non-Steam client.
+	/// </summary>
+	private static string SignatureStatus(uint result)
+	{
+		return result switch
+		{
+			0u => "valid",
+			0x800B0100u => "not-signed",   // TRUST_E_NOSIGNATURE
+			0x80096010u => "modified",     // TRUST_E_BAD_DIGEST - signed, then changed
+			0x800B0109u or                  // CERT_E_UNTRUSTEDROOT
+			0x800B010Au or                  // CERT_E_CHAINING
+			0x800B010Du or                  // CERT_E_UNTRUSTEDTESTROOT
+			0x800B0111u or                  // TRUST_E_EXPLICIT_DISTRUST
+			0x80096004u => "untrusted",    // TRUST_E_CERT_SIGNATURE - the certificate itself is not genuine
+			0x800B0101u => "expired",      // CERT_E_EXPIRED
+			0x800B010Cu => "revoked",      // CERT_E_REVOKED
+			_ => "unverifiable"
+		};
+	}
+
+	/// <summary>The raw WinVerifyTrust result for a file: 0 when the signature is valid.</summary>
+	private static uint AuthenticodeResult(string path)
+	{
+		path = ModuleIntegrity.NativeFilePath(path);
 		if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
 		{
-			return false;
+			return 0x800B0100u;
 		}
 		Guid pgActionID = new Guid("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
 		WintrustFileInfo structure = new WintrustFileInfo
@@ -4350,11 +4573,11 @@ public static class ScannerEngine
 			structure3.dwStateAction = 2u;
 			Marshal.StructureToPtr(structure3, num2, fDeleteOld: false);
 			WinVerifyTrust(IntPtr.Zero, pgActionID, num2);
-			return num3 == 0;
+			return num3;
 		}
 		catch
 		{
-			return false;
+			return 0xFFFFFFFFu;   // could not be checked at all; reported as unverifiable
 		}
 		finally
 		{

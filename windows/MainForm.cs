@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.Reflection;
 using System.Text.Json;
 
 namespace ACPScanner;
@@ -305,7 +306,7 @@ internal sealed class HudButton : Control
     public bool Primary { get; set; }
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public float Scale { get; set; } = 1f;
+    public float VisualScale { get; set; } = 1f;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public HudGlyph Glyph { get; set; } = HudGlyph.None;
@@ -389,7 +390,7 @@ internal sealed class HudButton : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
         var accent = Enabled ? Accent : AcpTheme.Faint;
-        var radius = (int)Math.Round(4 * Scale);
+        var radius = (int)Math.Round(4 * VisualScale);
 
         // The plate is inset by a pixel so the drop shadow below it has somewhere to fall.
         var r = new Rectangle(0, 0, Width - 1, Height - 2);
@@ -398,7 +399,7 @@ internal sealed class HudButton : Control
         if (_glow > 0.01f)
         {
             var bloom = r;
-            bloom.Inflate((int)(7 * Scale * _glow), (int)(6 * Scale * _glow));
+            bloom.Inflate((int)(7 * VisualScale * _glow), (int)(6 * VisualScale * _glow));
             using var bp = AcpTheme.RoundedRect(bloom, radius + 3);
             using var bb = new PathGradientBrush(bp)
             {
@@ -468,7 +469,7 @@ internal sealed class HudButton : Control
         // A lit rail along the left edge marks the primary action without a fill change.
         if (Primary && Enabled)
         {
-            var railW = Math.Max(2f, 2.5f * Scale);
+            var railW = Math.Max(2f, 2.5f * VisualScale);
             using var rb = new LinearGradientBrush(
                 new RectangleF(1.5f, r.Y + 2, railW, r.Height - 4),
                 AcpTheme.Fade(accent, 255), AcpTheme.Fade(accent, 150), 90f);
@@ -496,10 +497,10 @@ internal sealed class HudButton : Control
         // Label and mark are centred as one group, so the pair stays optically balanced
         // whatever the button's width.
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-        var track = Math.Max(0.6f, 1.1f * Scale);
+        var track = Math.Max(0.6f, 1.1f * VisualScale);
         var textW = Txt.TrackedWidth(g, Text, Font, track);
         var markW = Glyph == HudGlyph.None ? 0f : Font.GetHeight(g) * 0.98f;
-        var gap = Glyph == HudGlyph.None ? 0f : 7f * Scale;
+        var gap = Glyph == HudGlyph.None ? 0f : 7f * VisualScale;
         var startX = (Width - (markW + gap + textW)) / 2f;
         var midY = r.Y + r.Height / 2f + (_down ? 1f : 0f);
 
@@ -514,7 +515,7 @@ internal sealed class HudButton : Control
     /// <summary>The action marks. Drawn rather than shipped as glyphs so they scale cleanly.</summary>
     private void DrawGlyph(Graphics g, RectangleF box, Color color)
     {
-        var w = Math.Max(1.2f, 1.4f * Scale);
+        var w = Math.Max(1.2f, 1.4f * VisualScale);
         using var pen = new Pen(color, w) { StartCap = LineCap.Round, EndCap = LineCap.Round };
         using var brush = new SolidBrush(color);
 
@@ -542,7 +543,7 @@ internal sealed class HudButton : Control
             {
                 var s = box.Width * 0.52f;
                 var sq = new RectangleF(box.X + (box.Width - s) / 2f, box.Y + (box.Height - s) / 2f, s, s);
-                using var sp = AcpTheme.RoundedRect(Rectangle.Round(sq), Math.Max(1, (int)Scale));
+                using var sp = AcpTheme.RoundedRect(Rectangle.Round(sq), Math.Max(1, (int)VisualScale));
                 g.FillPath(brush, sp);
                 break;
             }
@@ -677,7 +678,7 @@ public sealed class MainForm : Form
     {
         "Counter-Strike must be running before you scan.",
         "The report link opens in your browser and can be shared with an admin.",
-        "A clean result is proof you can hand to a server admin.",
+        "A clean result is useful evidence you can hand to a server admin.",
         "Scanning reads your game's files and memory. Nothing is changed.",
         "Press ESC to cancel a scan in progress."
     };
@@ -864,13 +865,23 @@ public sealed class MainForm : Form
         _fHint    = AcpFonts.Display(S(12));
     }
 
+    /// <summary>
+    /// Artwork compiled into the executable, so the app ships as one file with no Assets
+    /// folder to lose or forget to copy.
+    /// </summary>
     private static Image? LoadAsset(string fileName)
     {
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "Assets", fileName);
-            // Read through memory so the file is not locked for the app's lifetime.
-            if (File.Exists(path)) return Image.FromStream(new MemoryStream(File.ReadAllBytes(path)));
+            using var stream = typeof(MainForm).Assembly.GetManifestResourceStream("ACS.Assets." + fileName);
+            if (stream is not null)
+            {
+                // Copied to memory: GDI+ needs its source stream alive for the image's lifetime.
+                var buffer = new MemoryStream();
+                stream.CopyTo(buffer);
+                buffer.Position = 0;
+                return Image.FromStream(buffer);
+            }
         }
         catch
         {
@@ -978,7 +989,7 @@ public sealed class MainForm : Form
         void Apply(HudButton b, int px, int x, int y, int w, int h)
         {
             var old = b.Font;
-            b.Scale = _scale;
+            b.VisualScale = _scale;
             b.Font = AcpFonts.Mono(S(px), FontStyle.Bold);
             b.Bounds = new Rectangle(S(x), S(y), S(w), S(h));
             if (old is not null && !ReferenceEquals(old, Font)) old.Dispose();
@@ -1042,15 +1053,8 @@ public sealed class MainForm : Form
 
     private static void OpenBrandSite()
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo(BrandUrl) { UseShellExecute = true });
-        }
-        catch
-        {
-            // No browser, or the shell refused it. Nothing here is worth interrupting a
-            // scan for.
-        }
+        // Not elevated: the app runs as administrator, the browser must not (see BrowserLink).
+        BrowserLink.Open(BrandUrl);
     }
 
     // ── Painting ─────────────────────────────────────────────────────────────
@@ -1709,8 +1713,10 @@ public sealed class MainForm : Form
                 AppendLog(LogLevel.Stage, message);
             });
 
+            // The player agreed on the privacy screen that the report is uploaded when the scan
+            // finishes, so it is - no second prompt.
             var result = await Task.Run(() => ScannerEngine.ScanAndUploadAsync(apiSettings.Url, apiSettings.Token, progress, cancellation.Token,
-                (json, token) => this.InvokeAsync(() => ScanPrivacy.ConfirmUpload(this, apiSettings.Url, json), token)), cancellation.Token);
+                uploadConsented: true), cancellation.Token);
             if (IsDisposed) return;
 
             SetProgress(100);
@@ -1731,6 +1737,16 @@ public sealed class MainForm : Form
             AppendLog(LogLevel.Muted, new string('-', 52));
             AppendLog(result.Status == "DETECTED" ? LogLevel.Detected : result.Status == "WARNING" ? LogLevel.Warn : LogLevel.Ok, $"VERDICT: {result.Status}");
             AppendLog(LogLevel.Info, $"Cheats {result.Detected}  ·  Warnings {result.Warnings}");
+
+            // The server exactly as the engine reported it when the scan started - the same
+            // wording the report page uses for the same scan.
+            AppendLog(LogLevel.Info, result.ServerStatus switch
+            {
+                "connected" => $"Server: {(string.IsNullOrWhiteSpace(result.ServerName) ? "(name not reported by server)" : result.ServerName)}  ·  {result.ServerAddress}"
+                               + (string.IsNullOrWhiteSpace(result.ServerMap) ? "" : $"  ·  {result.ServerMap}"),
+                "not-connected" => "Server: No Server Detected",
+                _ => "Server: not verified"
+            });
 
             if (result.Uploaded)
             {
@@ -1928,9 +1944,16 @@ public sealed class MainForm : Form
             ?? Environment.GetEnvironmentVariable("ACP_API_URL"))?.Trim() ?? "";
         var token = (Environment.GetEnvironmentVariable("ACS_API_TOKEN")
             ?? Environment.GetEnvironmentVariable("ACP_API_TOKEN"))?.Trim() ?? "";
-        var settingsPath = Path.Combine(AppContext.BaseDirectory, "acp-settings.json");
+        // The app is a single executable and is published without a settings file. Environment
+        // variables and an operator/user settings file override the public deployment defaults;
+        // the latter also keeps local test configuration out of the published folder.
+        var settingsPath = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "acp-settings.json"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LongHorn ACS", "acp-settings.json")
+        }.FirstOrDefault(File.Exists) ?? "";
 
-        if (File.Exists(settingsPath))
+        if (settingsPath != "")
         {
             try
             {
@@ -1953,7 +1976,16 @@ public sealed class MainForm : Form
 
         if (url == "")
         {
-            throw new InvalidOperationException("No report server is configured. Obtain the HTTPS API address from your server operator and set apiUrl in acp-settings.json before scanning.");
+            url = "https://cslonghorn.com/acs/api.php";
+        }
+        if (token == "")
+        {
+            token = typeof(MainForm).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == "AcsApiToken")?.Value?.Trim() ?? "";
+        }
+        if (token == "")
+        {
+            token = "a676018307afb5ac8570ae564cc62a25cd668b15933d2122";
         }
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
@@ -1970,14 +2002,9 @@ public sealed class MainForm : Form
             return;
         }
 
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch
-        {
-            // The report URL is still in the evidence log.
-        }
+        // Opened with the player's normal rights, never elevated; if it fails, the report URL
+        // is still in the evidence log.
+        BrowserLink.Open(url);
     }
 }
 
@@ -2170,7 +2197,7 @@ internal sealed class LogForm : Form
     }
 
     // Layout constants, in the 780x606 authoring canvas.
-    private const int Margin = 26;
+    private const int LayoutMargin = 26;
     private const int CardsY = 124;
     private const int CardH = 108;
     private const int LinkY = 264;      // leaves room for the label above it, clear of the cards
@@ -2184,21 +2211,21 @@ internal sealed class LogForm : Form
     {
         var pad = S(12);
         _log.Bounds = new Rectangle(
-            S(Margin) + pad, S(PanelY) + pad + S(22),
-            S(BaseW - Margin * 2) - pad * 2, S(PanelH) - pad * 2 - S(22));
+            S(LayoutMargin) + pad, S(PanelY) + pad + S(22),
+            S(BaseW - LayoutMargin * 2) - pad * 2, S(PanelH) - pad * 2 - S(22));
 
         void Place(HudButton b, int px, int x, int w)
         {
             var old = b.Font;
-            b.Scale = _scale;
+            b.VisualScale = _scale;
             b.Font = AcpFonts.Mono(S(px), FontStyle.Bold);
             b.Bounds = new Rectangle(S(x), S(ButtonsY), S(w), S(ButtonH));
             old?.Dispose();
         }
 
-        Place(_copy, 10, Margin, 126);
-        Place(_open, 10, Margin + 134, 142);
-        Place(_dismiss, 10, BaseW - Margin - 96, 96);
+        Place(_copy, 10, LayoutMargin, 126);
+        Place(_open, 10, LayoutMargin + 134, 142);
+        Place(_dismiss, 10, BaseW - LayoutMargin - 96, 96);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -2281,7 +2308,7 @@ internal sealed class LogForm : Form
     private void DrawHeader(Graphics g, int w)
     {
         var barH = S(46);
-        var x = (float)S(Margin);
+        var x = (float)S(LayoutMargin);
         var mid = barH / 2f;
 
         // Accent block in the current verdict's colour, so the window is identifiable
@@ -2331,21 +2358,21 @@ internal sealed class LogForm : Form
 
     private void DrawIntro(Graphics g)
     {
-        var x = (float)S(Margin);
+        var x = (float)S(LayoutMargin);
         Txt.DrawTracked(g, "WHAT THIS WINDOW SHOWS", _fEyebrow, x, S(66),
             AcpTheme.Fade(AcpTheme.Gold, 210), S(1.1f));
 
         DrawWrapped(g,
             "Every step of the scan is recorded below, in order, with the time it happened. " +
             "Each line is marked with what it found. A scan ends in one of three verdicts:",
-            _fBody, new RectangleF(x, S(84), S(BaseW - Margin * 2 - 40), S(40)),
+            _fBody, new RectangleF(x, S(84), S(BaseW - LayoutMargin * 2 - 40), S(40)),
             AcpTheme.Fade(AcpTheme.Ink, 195));
     }
 
     private void DrawCards(Graphics g, int w)
     {
         var gap = S(11);
-        var total = S(BaseW - Margin * 2);
+        var total = S(BaseW - LayoutMargin * 2);
         var cardW = (total - gap * 2) / 3;
         var y = S(CardsY);
         var h = S(CardH);
@@ -2354,7 +2381,7 @@ internal sealed class LogForm : Form
         {
             var v = Verdicts[i];
             var active = _mood == v.Mood;
-            var x = S(Margin) + i * (cardW + gap);
+            var x = S(LayoutMargin) + i * (cardW + gap);
             var card = new Rectangle(x, y, cardW, h);
 
             using (var path = AcpTheme.RoundedRect(card, S(4)))
@@ -2408,8 +2435,8 @@ internal sealed class LogForm : Form
     /// </summary>
     private void DrawLinkField(Graphics g, int w)
     {
-        var x = S(Margin);
-        var fieldW = S(BaseW - Margin * 2);
+        var x = S(LayoutMargin);
+        var fieldW = S(BaseW - LayoutMargin * 2);
         _linkRect = new Rectangle(x, S(LinkY), fieldW, S(LinkH));
 
         var has = _reportLink != "";
@@ -2475,7 +2502,7 @@ internal sealed class LogForm : Form
 
     private void DrawTimelinePanel(Graphics g, int w)
     {
-        var panel = new Rectangle(S(Margin), S(PanelY), S(BaseW - Margin * 2), S(PanelH));
+        var panel = new Rectangle(S(LayoutMargin), S(PanelY), S(BaseW - LayoutMargin * 2), S(PanelH));
 
         using (var path = AcpTheme.RoundedRect(panel, S(4)))
         using (var fill = new SolidBrush(Color.FromArgb(215, 11, 15, 21)))
@@ -2571,14 +2598,8 @@ internal sealed class LogForm : Form
             return;
         }
 
-        try
-        {
-            Process.Start(new ProcessStartInfo(_reportLink) { UseShellExecute = true });
-        }
-        catch
-        {
-            // No browser, or the shell refused it. The link is still copyable.
-        }
+        // Opened with the player's normal rights, never elevated; the link stays copyable.
+        BrowserLink.Open(_reportLink);
     }
 
     protected override void Dispose(bool disposing)

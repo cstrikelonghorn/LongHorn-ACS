@@ -69,11 +69,12 @@ if (!function_exists('acp_site_nav')) {
         $targetHref = ($downloadHref === '#' || $downloadHref === '') ? 'download.php' : $downloadHref;
         $items = [
             ['key' => 'home',     'label' => 'Home',     'href' => 'index.php',  'icon' => 'home'],
-            ['key' => 'cheats',   'label' => 'Cheats DB', 'href' => 'admin_cheats.php', 'icon' => 'cheats'],
             ['key' => 'download', 'label' => 'Download', 'href' => $targetHref,   'icon' => 'download'],
             ['key' => 'support',  'label' => 'Support',  'href' => 'mailto:support@cslonghorn.com', 'icon' => 'support'],
             ['key' => 'faq',      'label' => 'FAQ',      'href' => 'faq.php', 'icon' => 'help'],
         ];
+        // NOTE: the Cheats DB manager is intentionally NOT in this menu - it is
+        // reached through the discreet footbar link on every page instead.
 
         // Report views: the pill is rendered server-side, in normal flow under the header,
         // so it is always visible without a click but scrolls away with the page.

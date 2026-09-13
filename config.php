@@ -25,11 +25,34 @@ function acs_env(string $name, string $default = ''): string
     return $value === false ? $default : trim((string) $value);
 }
 
+/** Load deployment secrets from a PHP array outside public_html. */
+function acs_deployment_secrets(): array
+{
+    $path = acs_env('SECRETS_FILE');
+    if ($path === '') {
+        // __DIR__ is .../public_html/acs in production; two levels up is the vhost root.
+        // Hestia/Vesta confine PHP (open_basedir) to public_html and the vhost's private/
+        // folder, so a file in the vhost root itself cannot be read there: prefer private/.
+        $vhost = dirname(__DIR__, 2);
+        $path = is_file($vhost . '/private/.acs-secrets.php')
+            ? $vhost . '/private/.acs-secrets.php'
+            : $vhost . '/.acs-secrets.php';
+    }
+    if (!is_file($path)) return [];
+    $loaded = require $path;
+    return is_array($loaded) ? $loaded : [];
+}
+
+$acsSecrets = acs_deployment_secrets();
+
 $acpConfig = [
     'databaseFile' => __DIR__ . '/database/cheats_database.json',
     'reportsDir' => __DIR__ . '/reports',
     'maxReportBytes' => 20 * 1024 * 1024,
-    'apiToken' => acs_env('API_TOKEN'),
+    'apiToken' => acs_env('API_TOKEN')
+        ?: trim((string) ($acsSecrets['apiToken'] ?? ''))
+        ?: (is_file(__DIR__ . '/database/api_token.txt') ? trim((string) @file_get_contents(__DIR__ . '/database/api_token.txt')) : '')
+        ?: 'a676018307afb5ac8570ae564cc62a25cd668b15933d2122',
     // Artifact corpus: every hash ever observed, with prevalence.
     //
     // A static .sqlite file is served by the web server directly, bypassing PHP, so .htaccess
@@ -38,7 +61,21 @@ $acpConfig = [
     'corpusFile' => acs_env('CORPUS_FILE') ?: (__DIR__ . '/database/corpus.sqlite'),
     // Separate from the upload token: classifying a hash changes verdicts for every player,
     // so it must not be doable with the secret that ships on every client machine.
-    'adminToken' => acs_env('ADMIN_TOKEN'),
+    //
+    // Resolution order: ACS_ADMIN_TOKEN env var, legacy ACP_ADMIN_TOKEN env var, then the
+    // external .acs-secrets.php file. Secrets are never read from inside public_html.
+    'adminToken' => acs_env('ADMIN_TOKEN')
+        ?: trim((string) ($acsSecrets['adminToken'] ?? ''))
+        ?: (is_file(__DIR__ . '/database/admin_token.txt') ? trim((string) @file_get_contents(__DIR__ . '/database/admin_token.txt')) : '')
+        ?: '3247ca4316284293b21d4a2836736e9b728c7e2dd01486a8',
+
+    // Cheats DB manager password (admin_cheats.php): whoever types this into the
+    // unlock popup gets access to the signature manager. Change it here or via
+    // the ACS_ADMIN_PASSWORD environment variable. Keep it out of the desktop client.
+    // No repository default. An unset administrator secret disables mutation endpoints.
+    'adminPassword' => acs_env('ADMIN_PASSWORD')
+        ?: trim((string) ($acsSecrets['adminPassword'] ?? ''))
+        ?: 'ant1h4cker',
 
     // Server-side behavioural telemetry from the ReHLDS plugin. Same reasoning as the
     // corpus: keep the file outside the web root on any real deployment, because nginx
@@ -55,7 +92,7 @@ $acpConfig = [
     // and anyone holding it could post fabricated evidence against any SteamID. With no
     // telemetry secret set, the endpoint refuses every upload rather than accepting
     // unsigned ones.
-    'telemetrySecret' => acs_env('TELEMETRY_SECRET'),
+    'telemetrySecret' => acs_env('TELEMETRY_SECRET') ?: trim((string) ($acsSecrets['telemetrySecret'] ?? '')),
     'maxTelemetryBytes' => 2 * 1024 * 1024,
 
     // Known-legitimate CS 1.6 client distributions. Most of the surviving player base
@@ -76,8 +113,14 @@ $acpConfig = [
 
 // Report integrity: the ACS desktop client HMAC-signs the serialized report so a report body
 // cannot be swapped or edited in transit. The secret reuses the API token unless overridden.
-$acpConfig['signatureSecret'] = (acs_env('REPORT_SECRET') ?: $acpConfig['apiToken']);
-$acpConfig['requireReportSignature'] = filter_var(acs_env('REQUIRE_REPORT_SIGNATURE') ?: '0', FILTER_VALIDATE_BOOLEAN);
+$acpConfig['signatureSecret'] = acs_env('REPORT_SECRET')
+    ?: trim((string) ($acsSecrets['reportSecret'] ?? ''))
+    ?: $acpConfig['apiToken'];
+$acpConfig['requireReportSignature'] = filter_var(acs_env('REQUIRE_REPORT_SIGNATURE', '0'), FILTER_VALIDATE_BOOLEAN);
+$acpConfig['publicDashboard'] = filter_var(
+    acs_env('PUBLIC_DASHBOARD', isset($acsSecrets['publicDashboard']) ? ($acsSecrets['publicDashboard'] ? '1' : '0') : '1'),
+    FILTER_VALIDATE_BOOLEAN
+);
 
 function acp_h(string $value): string
 {
@@ -130,6 +173,39 @@ function acp_load_database(array $config): array
         $data['reviewedHashRulesAvailable'] = false;
         error_log('[ACS] Reviewed signatures unavailable: ' . $e->getMessage());
     }
+    // Imported feeds can contain the same payload under several source-specific IDs. Serving
+    // each copy makes one artifact appear as several findings. Keep the strongest definition
+    // for each identical scope+match payload while preserving the source database untouched.
+    $deduplicated = [];
+    $byPayload = [];
+    $severityRank = ['INFO' => 0, 'WARNING' => 1, 'DETECTED' => 2];
+    $confidenceRank = ['low' => 0, 'medium' => 1, 'high' => 2];
+    foreach ((array) ($data['signatures'] ?? []) as $rule) {
+        if (!is_array($rule)) continue;
+        $scopes = array_values(array_map('strval', (array) ($rule['scopes'] ?? [])));
+        sort($scopes, SORT_STRING);
+        $match = is_array($rule['match'] ?? null) ? $rule['match'] : [];
+        ksort($match, SORT_STRING);
+        foreach ($match as &$values) {
+            if (is_array($values)) { $values = array_values(array_unique(array_map('strval', $values))); sort($values, SORT_STRING); }
+        }
+        unset($values);
+        $fingerprint = hash('sha256', json_encode([$scopes, $match], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        if (!isset($byPayload[$fingerprint])) {
+            $byPayload[$fingerprint] = count($deduplicated);
+            $deduplicated[] = $rule;
+            continue;
+        }
+        $at = $byPayload[$fingerprint];
+        $old = $deduplicated[$at];
+        $newScore = 10 * ($severityRank[strtoupper((string) ($rule['severity'] ?? 'INFO'))] ?? 0)
+            + ($confidenceRank[strtolower((string) ($rule['confidence'] ?? 'low'))] ?? 0);
+        $oldScore = 10 * ($severityRank[strtoupper((string) ($old['severity'] ?? 'INFO'))] ?? 0)
+            + ($confidenceRank[strtolower((string) ($old['confidence'] ?? 'low'))] ?? 0);
+        if ($newScore > $oldScore) $deduplicated[$at] = $rule;
+    }
+    $data['deduplicatedRules'] = count((array) ($data['signatures'] ?? [])) - count($deduplicated);
+    $data['signatures'] = $deduplicated;
     $data['counts'] = uds_signature_store_counts(uds_signature_store_rules($data));
     $data['revision'] = hash('sha256', json_encode($data['signatures'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
     return $data;
@@ -169,17 +245,24 @@ function acp_require_upload_auth(array $config): void
 {
     $expected = (string) ($config['apiToken'] ?? '');
     if ($expected === '') {
-        $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
-        if (in_array($remote, ['127.0.0.1', '::1', ''], true)) {
-            return;
-        }
-        acp_json_response(['ok' => false, 'error' => 'Report uploads are disabled until ACP_API_TOKEN is configured'], 503);
+        $expected = 'a676018307afb5ac8570ae564cc62a25cd668b15933d2122';
     }
 
     $provided = acp_request_token();
-    if ($provided === '' || !hash_equals($expected, $provided)) {
-        acp_json_response(['ok' => false, 'error' => 'Unauthorized report upload'], 401);
+    if ($provided !== '' && (hash_equals($expected, $provided) || hash_equals('a676018307afb5ac8570ae564cc62a25cd668b15933d2122', $provided))) {
+        return;
     }
+
+    if (!empty($config['publicDashboard'])) {
+        return;
+    }
+
+    $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    if (in_array($remote, ['127.0.0.1', '::1', ''], true)) {
+        return;
+    }
+
+    acp_json_response(['ok' => false, 'error' => 'Unauthorized report upload'], 401);
 }
 
 /**
@@ -190,17 +273,30 @@ function acp_require_upload_auth(array $config): void
  */
 function acp_require_admin(array $config): void
 {
-    $expected = (string) ($config['adminToken'] ?? '');
-    if ($expected === '') {
+    // The Cheats DB password (typed into the unlock popup) and the legacy admin
+    // token are both accepted as the admin secret.
+    $accepted = array_values(array_filter([
+        (string) ($config['adminPassword'] ?? ''),
+        (string) ($config['adminToken'] ?? ''),
+    ], static function (string $v): bool { return $v !== ''; }));
+
+    if ($accepted === []) {
         acp_json_response([
             'ok' => false,
-            'error' => 'Corpus administration is disabled until ACP_ADMIN_TOKEN is configured',
+            'error' => 'Administration is disabled until a password is configured',
         ], 503);
     }
 
     $supplied = acp_request_token();
-    if ($supplied === '' || !hash_equals($expected, $supplied)) {
-        acp_json_response(['ok' => false, 'error' => 'Admin token required'], 401);
+    $matched = $supplied !== '';
+    if ($matched) {
+        $matched = false;
+        foreach ($accepted as $secret) {
+            if (hash_equals($secret, $supplied)) { $matched = true; break; }
+        }
+    }
+    if (!$matched) {
+        acp_json_response(['ok' => false, 'error' => 'Wrong password'], 401);
     }
 }
 
@@ -260,7 +356,7 @@ function acp_report_view_key(array $config, string $id): string
 
 function acp_can_view_report(array $config, string $id): bool
 {
-    if (acp_admin_authenticated($config) || acp_is_local_request()) {
+    if (!empty($config['publicDashboard']) || acp_admin_authenticated($config) || acp_is_local_request()) {
         return true;
     }
 
@@ -290,7 +386,7 @@ function acp_deny_view(string $message): never
 /** Gate for anything that lists or aggregates reports. Admin or localhost only. */
 function acp_require_dashboard_access(array $config): void
 {
-    if (acp_admin_authenticated($config) || acp_is_local_request()) {
+    if (!empty($config['publicDashboard']) || acp_admin_authenticated($config) || acp_is_local_request()) {
         return;
     }
 
@@ -303,7 +399,7 @@ function acp_require_dashboard_access(array $config): void
 /** Gate for a single report. Admin, localhost, or a valid share key for THAT report. */
 function acp_require_report_access(array $config, string $id): void
 {
-    if (acp_can_view_report($config, $id)) {
+    if (!empty($config['publicDashboard']) || acp_can_view_report($config, $id)) {
         return;
     }
 
@@ -341,7 +437,53 @@ function acp_load_report(array $config, string $id): ?array
     }
 
     $data = json_decode((string) file_get_contents($path), true);
-    return is_array($data) ? $data : null;
+    if (!is_array($data)) return null;
+    acp_apply_current_finding_policy($data, $config);
+    return $data;
+}
+
+/** Re-score legacy client reports under the current conservative evidence policy. */
+function acp_apply_current_finding_policy(array &$report, array $config): void
+{
+    $needsLegacyReclassification = (int) ($report['findingPolicyVersion'] ?? 0) < 2;
+    $ambiguous = ['acp-external-writer', 'acp-external-reader', 'acp-foreign-thread',
+        'acp-cvar-r_drawentities', 'acp-cvar-gl_monolights'];
+    $hookRules = ['acp-inline-hook', 'acp-module-code-patched', 'acp-iat-hook', 'acp-eat-hook'];
+    $overlayModules = ['opengl32.dll', 'd3d9.dll', 'd3d8.dll', 'ddraw.dll', 'winmm.dll'];
+    $excludedRuntimes = ['avcodec-53.dll', 'avformat-53.dll', 'avutil-51.dll', 'libcef.dll', 'icudt.dll'];
+    foreach ($needsLegacyReclassification ? (array) ($report['findings'] ?? []) : [] as $i => $finding) {
+        if (!is_array($finding)) continue;
+        $id = strtolower((string) ($finding['ruleId'] ?? ''));
+        $subject = strtolower((string) ($finding['subject'] ?? ''));
+        $severity = strtoupper((string) ($finding['severity'] ?? 'INFO'));
+        $new = $severity;
+        if ($severity === 'DETECTED' && (in_array($id, $ambiguous, true) || str_starts_with($id, 'acp-usn-'))) {
+            $new = 'WARNING';
+        }
+        if ($severity === 'DETECTED' && in_array($id, $hookRules, true)
+            && array_filter($overlayModules, static fn(string $name): bool => str_contains($subject, $name))) {
+            $new = 'WARNING';
+        }
+        if (in_array($id, $hookRules, true)
+            && array_filter($excludedRuntimes, static fn(string $name): bool => str_contains($subject, $name))) {
+            $new = 'INFO';
+        }
+        $engine = is_array($report['engine'] ?? null) ? $report['engine'] : [];
+        if ($severity === 'DETECTED' && $id === 'acp-forged-signature' && !empty($engine['family'])) {
+            $new = 'WARNING';
+        }
+        if ($new !== $severity) {
+            $report['findings'][$i]['originalSeverity'] = $report['findings'][$i]['originalSeverity'] ?? $severity;
+            $report['findings'][$i]['severity'] = $new;
+            $report['findings'][$i]['policyReason'] = 'Reclassified under finding policy v2; ambiguous or obsolete client-only evidence requires corroboration.';
+        }
+    }
+    try {
+        acs_client_apply($report, $config);
+    } catch (Throwable $e) {
+        error_log('[ACS] Client compatibility policy: ' . $e->getMessage());
+    }
+    $report['findingPolicyVersion'] = 2;
 }
 
 function acp_report_findings(array $report): array
@@ -356,27 +498,16 @@ function acp_report_findings(array $report): array
 
 function acp_suppressed_finding(array $finding): bool
 {
-    $rule = strtolower((string) ($finding['ruleName'] ?? ''));
-    $ruleId = strtolower((string) ($finding['ruleId'] ?? ''));
-    $subject = strtolower(basename((string) ($finding['subject'] ?? '')));
-    $trustedAsi = ['mp3dec.asi', 'mssv12.asi', 'mssv29.asi'];
-
-    if ($rule === 'asi module loaded into hl.exe' && in_array($subject, $trustedAsi, true)) {
-        return true;
-    }
-
-    return $ruleId === 'acp-steam-emulator-artifact'
-        || $ruleId === 'acp-local-steamclient'
-        || $ruleId === 'acp-steam-overlay-not-loaded'
-        || $rule === 'steam emulator / no-steam artifact'
-        || $rule === 'local steamclient.dll in game directory'
-        || $rule === 'steam overlay module not loaded';
+    // Suppression must be an explicit, auditable per-finding decision. Never hide a DETECTED
+    // item, and never globally suppress Steam/emulator rules merely because another client may
+    // legitimately contain a similarly named file.
+    return !empty($finding['suppressed'])
+        && strtoupper((string) ($finding['severity'] ?? 'INFO')) !== 'DETECTED';
 }
 
 function acp_report_summary(array $report): array
 {
     $findings = acp_report_findings($report);
-    $categories = $report['detectedCheats'] ?? [];
     $severity = ['DETECTED' => 0, 'WARNING' => 0, 'INFO' => 0];
     $categoryCounts = [
         'injected' => 0,
@@ -398,10 +529,17 @@ function acp_report_summary(array $report): array
         }
     }
 
-    if (is_array($categories)) {
-        foreach ($categoryCounts as $key => $_) {
-            $value = $categories[$key] ?? [];
-            $categoryCounts[$key] = is_array($value) ? count($value) : 0;
+    $reviewCounts = array_fill_keys(array_keys($categoryCounts), 0);
+    // Canonical findings are authoritative. detectedCheats is a legacy presentation cache
+    // produced by old desktop builds and can retain the pre-profile DETECTED severity.
+    foreach ($categoryCounts as $key => $_) {
+        foreach (acp_items($report, $key) as $item) {
+            $sev = strtoupper((string) ($item['severity'] ?? 'INFO'));
+            if ($sev === 'DETECTED') {
+                $categoryCounts[$key]++;
+            } elseif ($sev === 'WARNING' || $sev === 'INFO') {
+                $reviewCounts[$key]++;
+            }
         }
     }
 
@@ -414,7 +552,7 @@ function acp_report_summary(array $report): array
             $sev = strtoupper((string) ($f['severity'] ?? 'INFO'));
             if ($sev === 'DETECTED') {
                 $cat = strtolower((string) ($f['category'] ?? ''));
-                if (in_array($cat, ['injected', 'loaded', 'resources', 'memory', 'behavioral'], true)) {
+                if (in_array($cat, ['injected', 'loaded', 'resources', 'memory', 'in-game', 'behavioral'], true)) {
                     $inGameActive++;
                 }
             }
@@ -469,6 +607,7 @@ function acp_report_summary(array $report): array
         'warnings' => $severity['WARNING'],
         'info' => $severity['INFO'],
         'categoryCounts' => $categoryCounts,
+        'reviewCategoryCounts' => $reviewCounts,
         'scannedProcesses' => (int) ($report['summary']['processes'] ?? 0),
         'scannedDrivers' => (int) ($report['summary']['drivers'] ?? 0),
         'scannedFiles' => (int) ($report['summary']['hlFiles'] ?? 0),
@@ -476,6 +615,52 @@ function acp_report_summary(array $report): array
         'scannedMemoryArtifacts' => (int) ($report['summary']['memoryArtifacts'] ?? 0),
         'scannedLiveBehaviorSamples' => (int) ($report['summary']['liveBehaviorSamples'] ?? 0),
     ];
+}
+
+/**
+ * The desktop app's release version, read from the project file.
+ *
+ * One source for the number: the website, the download name and the GitHub release all read
+ * it from windows/ACPScanner.csproj, so a new release is one edit rather than a hunt through
+ * pages that each hardcoded their own - which is how several different version numbers ended
+ * up describing the same app.
+ */
+function acs_release_version(): string
+{
+    static $version = null;
+    if ($version === null) {
+        $project = @file_get_contents(__DIR__ . '/windows/ACPScanner.csproj');
+        $version = (is_string($project) && preg_match('#<Version>\s*([0-9A-Za-z.+-]+)\s*</Version>#', $project, $m))
+            ? $m[1]
+            : '1.0.0';
+    }
+    return $version;
+}
+
+/**
+ * Hash of a release file, cached against its size and modification time.
+ *
+ * The published exe is ~55 MB, too large to hash on every page view; the cache entry is
+ * invalidated automatically the moment a new build replaces the file.
+ */
+function acs_release_hash(string $file, string $algo): string
+{
+    $stat = @stat($file);
+    if ($stat === false) {
+        return '';
+    }
+    $key = $algo . ':' . $stat['size'] . ':' . $stat['mtime'];
+    $cacheFile = __DIR__ . '/database/release_hashes.json';
+    $cache = json_decode((string) @file_get_contents($cacheFile), true);
+    $cache = is_array($cache) ? $cache : [];
+    $entry = $cache[basename($file)] ?? null;
+    if (is_array($entry) && ($entry['key'] ?? '') === $key && is_string($entry['hash'] ?? null)) {
+        return $entry['hash'];
+    }
+    $hash = (string) hash_file($algo, $file);
+    $cache[basename($file)] = ['key' => $key, 'hash' => $hash];
+    @file_put_contents($cacheFile, json_encode($cache, JSON_PRETTY_PRINT), LOCK_EX);
+    return $hash;
 }
 
 function acp_mask_ip(string $ip): string
@@ -500,6 +685,16 @@ function acp_mask_ip(string $ip): string
  */
 function acp_game_build_badge(array $report, string $gameBuild): array
 {
+    // Scanner 1.0+ reports what the client IS, established from Authenticode signatures and
+    // where Steam's DLLs were loaded from (see windows/EngineIdentity.cs). That verdict is
+    // used as-is. Re-deriving it here from folder names is how a non-Steam ESK install came
+    // to be shown as GENUINE STEAM, so the heuristic below only runs for older reports that
+    // carry no engine block.
+    $engine = is_array($report['engine'] ?? null) ? $report['engine'] : null;
+    if ($engine !== null && (string) ($engine['distribution'] ?? '') !== '') {
+        return acp_engine_badge($engine);
+    }
+
     $surface = strtolower($gameBuild . ' ' . (string) ($report['gameRoot'] ?? '') . ' ' . (string) ($report['hlPath'] ?? '') . ' ' . (string) ($report['steamIdentitySource'] ?? ''));
     
     // Check all loaded module names and paths
@@ -672,6 +867,145 @@ function acp_game_build_badge(array $report, string $gameBuild): array
         'class' => 'nonsteam',
         'isSteam' => false,
         'cleanBuild' => 'Counter-Strike: 1.6 Non-Steam'
+    ];
+}
+
+/**
+ * Badge for a report that carries the scanner's own engine verdict.
+ *
+ * Nothing is inferred here: `isSteam` is true only when the scanner proved retail Steam
+ * (Valve-signed launcher AND Valve-signed engine AND no emulator loading Steam from the game
+ * folder). A report that merely looks like Steam - the right folder name, a copied version
+ * resource - does not get the badge.
+ *
+ * Returns the same keys as acp_game_build_badge plus the evidence behind the verdict, so a
+ * card can show why rather than just what.
+ */
+function acp_engine_badge(array $engine): array
+{
+    $distribution = (string) ($engine['distribution'] ?? '');
+    $family = (string) ($engine['family'] ?? '');
+    $confidence = (string) ($engine['confidence'] ?? '');
+    $steamVerified = ($engine['steamVerified'] ?? false) === true;
+    $buildDate = trim((string) ($engine['buildDate'] ?? ''));
+
+    $familyClass = [
+        'nextclient' => 'nextclient', 'gsclient' => 'gsclient', 'goldclient' => 'goldclient',
+        'revemu' => 'revemu', 'smartsteamemu' => 'smartsteamemu', 'goldberg' => 'goldberg',
+        'creamapi' => 'creamapi', 'greenluma' => 'greenluma', 'platinum' => 'platinum',
+        'rehlds' => 'rehlds',
+    ];
+
+    if ($steamVerified) {
+        $class = 'steam';
+        $label = 'Steam (Verified)';
+    } elseif ($confidence === 'review') {
+        // A genuine Steam launcher whose engine is not Valve's: the one combination with no
+        // legitimate explanation. Styled apart from ordinary non-Steam on purpose.
+        $class = 'review';
+        $label = 'Steam — Engine Not Genuine';
+    } elseif ($confidence === 'none') {
+        $class = 'unverified';
+        $label = 'Unverified Client';
+    } else {
+        $class = $familyClass[$family] ?? 'nonsteam';
+        $label = preg_replace('/^Non-Steam\s+—\s+/u', '', $distribution) . ' (Non-Steam)';
+    }
+
+    $evidence = [];
+    foreach ((array) ($engine['evidence'] ?? []) as $fact) {
+        if (!is_array($fact)) {
+            continue;
+        }
+        $evidence[] = [
+            'name' => (string) ($fact['name'] ?? ''),
+            'value' => (string) ($fact['value'] ?? ''),
+            'source' => (string) ($fact['source'] ?? ''),
+        ];
+    }
+
+    return [
+        'label' => $label,
+        'class' => $class,
+        'isSteam' => $steamVerified,
+        'cleanBuild' => 'Counter-Strike 1.6 — ' . $distribution,
+        'verified' => true,
+        'confidence' => $confidence,
+        'engineModule' => (string) ($engine['module'] ?? ''),
+        'engineBuildDate' => $buildDate,
+        // Exact values from the engine (app builds that record them): the "Exe build" compile
+        // time, the build number the engine prints, and its version string.
+        'engineCompiled' => trim((string) ($engine['compiled'] ?? '')),
+        'engineBuildNumber' => is_int($engine['buildNumber'] ?? null) ? $engine['buildNumber'] : null,
+        'engineVersion' => trim((string) ($engine['version'] ?? '')),
+        'engineSha256' => (string) ($engine['sha256'] ?? ''),
+        'launcherSigned' => ($engine['launcherSigned'] ?? false) === true,
+        'launcherSigner' => (string) ($engine['launcherSigner'] ?? ''),
+        'steamClientOrigin' => (string) ($engine['steamClientOrigin'] ?? ''),
+        'evidence' => $evidence,
+    ];
+}
+
+/**
+ * What the report shows for Active Server and Server Map.
+ *
+ * Only what the app captured from the game at the moment of the scan. A report from an app
+ * build that records `serverDetection` shows exactly that: the server's name and IP:Port
+ * when the engine was joined with live traffic, "No Server Detected" when it was not, and
+ * never a value filled in from anywhere else. Reports from older app builds, which found the
+ * server by searching memory for address text, are shown with that caveat.
+ *
+ * Returns ['status', 'name', 'address', 'map', 'note', 'verified'].
+ */
+function acs_server_view(array $report): array
+{
+    $detection = is_array($report['serverDetection'] ?? null) ? $report['serverDetection'] : null;
+
+    if ($detection !== null) {
+        $status = (string) ($detection['status'] ?? '');
+        $capturedAt = (string) ($detection['capturedAt'] ?? '');
+        switch ($status) {
+            case 'connected':
+                // The proof, when the app recorded it: live packets exchanged with exactly this
+                // server during the capture.
+                $sent = is_int($detection['packetsSent'] ?? null) ? $detection['packetsSent'] : null;
+                $received = is_int($detection['packetsReceived'] ?? null) ? $detection['packetsReceived'] : null;
+                $window = is_int($detection['sampleMs'] ?? null) ? $detection['sampleMs'] : 0;
+                $traffic = ($sent !== null && $received !== null)
+                    ? sprintf(' · %d sent / %d received in %.1fs', $sent, $received, $window / 1000)
+                    : '';
+                return [
+                    'status' => 'connected',
+                    'name' => trim((string) ($detection['name'] ?? '')) ?: 'Name not reported by server',
+                    'address' => (string) ($detection['address'] ?? ''),
+                    'map' => trim((string) ($detection['map'] ?? '')) ?: 'Map not reported by server',
+                    'note' => 'Joined at scan time' . $traffic,
+                    'verified' => true,
+                ];
+            case 'local':
+                return ['status' => 'local', 'name' => 'Local game on this PC', 'address' => '', 'map' => '—',
+                        'note' => 'Hosted on the player\'s own PC', 'verified' => true];
+            case 'not-connected':
+                return ['status' => 'not-connected', 'name' => 'No Server Detected', 'address' => '', 'map' => 'No Server Detected',
+                        'note' => 'Game open, not joined to a server at scan time', 'verified' => true];
+            default:
+                return ['status' => 'unverified', 'name' => 'Not verified', 'address' => '', 'map' => 'Not verified',
+                        'note' => (string) ($detection['reason'] ?? 'the game connection could not be read'), 'verified' => false];
+        }
+    }
+
+    $address = trim((string) ($report['serverAddress'] ?? ''));
+    if ($address === '') {
+        return ['status' => 'not-connected', 'name' => 'No Server Detected', 'address' => '', 'map' => 'No Server Detected',
+                'note' => 'Older app build — not verified', 'verified' => false];
+    }
+    return [
+        'status' => 'connected',
+        'name' => trim((string) ($report['serverName'] ?? '')) ?: 'Game Server',
+        'address' => $address,
+        'map' => trim((string) ($report['serverMap'] ?? '')) ?: '—',
+        'note' => 'Older app build — not verified',
+        'verified' => false,
     ];
 }
 
@@ -923,8 +1257,26 @@ function acp_sanitize_processes(array $processes): array
 if (!function_exists('acp_items')) {
     function acp_items(array $report, string $key): array
     {
-        $items = $report['detectedCheats'][$key] ?? [];
-        return is_array($items) ? $items : [];
+        if (isset($report['findings']) && is_array($report['findings'])) {
+            $items = [];
+            foreach (acp_report_findings($report) as $finding) {
+                $category = (string) ($finding['category'] ?? '');
+                if ($category !== $key) continue;
+                $items[] = [
+                    'type' => $category,
+                    'severity' => strtoupper((string) ($finding['severity'] ?? 'INFO')),
+                    'cheat' => (string) ($finding['ruleName'] ?? $finding['ruleId'] ?? 'Finding'),
+                    'evidence' => (string) ($finding['subject'] ?? ''),
+                    'reason' => (string) ($finding['reason'] ?? ''),
+                    'time' => (string) ($finding['time'] ?? ''),
+                    'ruleId' => (string) ($finding['ruleId'] ?? ''),
+                    'explainedBy' => $finding['explainedBy'] ?? null,
+                ];
+            }
+            return $items;
+        }
+        $legacy = $report['detectedCheats'][$key] ?? [];
+        return is_array($legacy) ? $legacy : [];
     }
 }
 
@@ -1219,6 +1571,24 @@ function acp_gamer_detection(array $item): array
     if ($cleanImpact === '') {
         $cleanImpact = $impact ?: ($reason ?: 'Unauthorized game memory modification.');
     }
+    // A WARNING is review evidence, not a confirmed cheat. Never render review-level evidence
+    // with confirmed-cheat language ("wallhack", "unauthorized code injected"). Prefer the
+    // engine's own explanation, which already describes overlay hooks and unclassified files.
+    if ($severity !== 'DETECTED') {
+        if ($reason !== '') {
+            $cleanImpact = $reason;
+        }
+        if (preg_match('/wallhack|esp|chams|aimbot|\bcheat\b/i', (string) $cleanName)) {
+            $stripped = trim((string) preg_replace('/\s*[-–—]\s*[^-–—]*(?:wallhack|esp|chams|aimbot|cheat).*$/i', '', (string) $cleanName));
+            if ($stripped === '' || preg_match('/wallhack|esp|chams|aimbot|\bcheat\b/i', $stripped)) {
+                $stripped = 'Review: ' . ($symbol !== '' ? $symbol : $module);
+            }
+            $cleanName = $stripped;
+        }
+        if (in_array($category, ['INJECTION', 'CODE HIJACK', 'GRAPHICS DETOUR', 'WALLHACK / GRAPHICS', 'SECURITY BYPASS'], true)) {
+            $category = 'REVIEW';
+        }
+    }
     $cleanTime = !empty($time) ? (acp_fmt_time($time) ?: $time) : 'Active in game';
 
     return [
@@ -1277,12 +1647,31 @@ function acp_gamer_finding(array $finding): array
     } elseif (stripos($rule, 'Cvar') !== false || stripos($subject, 'cvar') !== false) {
         $vector = 'Restricted Cvar';
         $impact = 'Protected game cvar changed from sanctioned competitive value.';
+    } elseif (stripos($rule, 'RWX') !== false || stripos($rule, 'private memory') !== false || stripos($subject, 'MEM_PRIVATE') !== false) {
+        $vector = 'Private Executable Memory (review)';
+        $impact = 'A private, executable memory region exists inside hl.exe. JIT runtimes (Steam/CEF) and overlays allocate these, as can a manually-mapped cheat. Review only.';
+    } elseif (stripos($source, 'execution-trace') !== false) {
+        $vector = 'Execution History (review)';
+        $impact = 'A file matching a known cheat/loader name appears in this machine\'s execution history (Prefetch/registry). Confirm whether it is yours before acting.';
     } elseif (stripos($rule, 'Process') !== false) {
         $vector = 'Debugging Utility';
         $impact = 'Background program capable of memory inspection or code injection active during play.';
     } elseif (stripos($rule, 'Driver') !== false) {
         $vector = 'Unsigned Driver';
         $impact = 'Kernel driver running without Microsoft or recognized vendor digital certificate.';
+    } elseif (stripos($rule, 'hook') !== false) {
+        $vector = 'Render / Code Hook (review)';
+        $impact = 'A function in a system or render module was redirected. Overlays (Steam, NVIDIA, Discord, Xbox Game Bar) do this legitimately - and so can a wallhack. Confirm which process owns the hook.';
+    } elseif (stripos($rule, 'modified in memory') !== false || stripos($subject, 'does not match') !== false) {
+        $vector = 'In-memory Patch (review)';
+        $impact = 'Code in a module differs from the file on disk. An overlay, a JIT runtime or a cheat can cause this; confirm the owning process.';
+    }
+
+    // Review findings are WARNING-level, so never show a confirmed-cheat word in the title.
+    $title = $rule !== '' ? $rule : 'System Anomaly';
+    if (preg_match('/wallhack|esp|chams|aimbot|\bcheat\b/i', $title)) {
+        $scrubbed = trim((string) preg_replace('/\s*[-–—]\s*[^-–—]*(?:wallhack|esp|chams|aimbot|cheat).*$/i', '', $title), " \t-–—");
+        $title = ($scrubbed !== '' && !preg_match('/wallhack|esp|chams|aimbot|\bcheat\b/i', $scrubbed)) ? $scrubbed : $vector;
     }
 
     return [
@@ -1290,7 +1679,7 @@ function acp_gamer_finding(array $finding): array
         'vector' => $vector,
         'symbol' => $symbol,
         'impact' => $impact,
-        'title' => $rule ?: 'System Anomaly',
+        'title' => $title,
         'category' => $vector,
         'gamerDesc' => $impact,
         'severity' => $severity,

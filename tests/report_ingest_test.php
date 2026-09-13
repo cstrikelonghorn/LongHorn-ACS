@@ -28,6 +28,22 @@ check(!$verified && $legacy === $report, 'legacy remains available when explicit
 acp_normalize_report($decoded);
 check($decoded['status'] === 'CLEAN' && $decoded['summary']['detected'] === 0, 'submitted verdict and detection total recomputed');
 check($decoded['summary']['modules'] === 1, 'inventory totals recomputed');
+$stale = [
+    'findings' => [[
+        'ruleId' => 'acp-inline-hook', 'ruleName' => 'Inline hook', 'severity' => 'WARNING',
+        'category' => 'injected', 'subject' => 'opengl32.dll', 'reason' => 'profile downgrade',
+    ]],
+    'detectedCheats' => ['injected' => [['severity' => 'DETECTED', 'cheat' => 'stale cache']]],
+];
+$staleSummary = acp_report_summary($stale);
+check($staleSummary['detected'] === 0 && $staleSummary['categoryCounts']['injected'] === 0
+    && $staleSummary['reviewCategoryCounts']['injected'] === 1,
+    'canonical findings override stale detectedCheats severities');
+$steamFinding = ['findings' => [[
+    'ruleId' => 'acp-local-steamclient', 'ruleName' => 'Local steamclient.dll',
+    'severity' => 'WARNING', 'category' => 'loaded', 'subject' => 'steamclient.dll',
+]]];
+check(count(acp_report_findings($steamFinding)) === 1, 'Steam findings are not globally suppressed without profile evidence');
 $rejected = false;
 try { acp_decode_upload(['report' => ['findings' => [['severity' => 'fake']]]], []); } catch (InvalidArgumentException $e) { $rejected = true; }
 check($rejected, 'malformed findings rejected');

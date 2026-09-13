@@ -177,6 +177,67 @@ internal static class ModuleIntegrity
         return new Result(patched ? "patched" : "clean", moduleName, compared, differing, sites, hookedImports, hookedExports, detail);
     }
 
+    /// <summary>
+    /// The path at which this process can actually open a file named by its true location.
+    ///
+    /// ACS ships as one 32-bit executable so it runs on 32-bit and 64-bit Windows alike. On
+    /// 64-bit Windows a 32-bit process is silently redirected from System32 to SysWOW64, so
+    /// opening C:\Windows\System32\drivers\x.sys - or a 64-bit program's own image in
+    /// System32 - would read a different file, or none. "Sysnative" is the alias that reaches
+    /// the real System32 from a 32-bit process. Reports keep the true path; only file reads use
+    /// this one. The game's own 32-bit modules are normalised to SysWOW64 first
+    /// (NormalizeModulePath) and are unaffected.
+    /// </summary>
+    internal static string NativeFilePath(string path)
+    {
+        if (!Environment.Is64BitOperatingSystem || Environment.Is64BitProcess || string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var system32 = Path.Combine(windows, "System32") + Path.DirectorySeparatorChar;
+        if (path.StartsWith(system32, StringComparison.OrdinalIgnoreCase))
+        {
+            return Path.Combine(windows, "Sysnative", path.Substring(system32.Length));
+        }
+        return path;
+    }
+
+    /// <summary>
+    /// Full image path of any process, 32-bit or 64-bit, from any caller. Process.MainModule
+    /// throws when a 32-bit process asks about a 64-bit one; QueryFullProcessImageName does not.
+    /// </summary>
+    internal static string ProcessImagePath(int processId)
+    {
+        var handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (handle == IntPtr.Zero)
+        {
+            return "";
+        }
+        try
+        {
+            var capacity = 1024;
+            var buffer = new System.Text.StringBuilder(capacity);
+            return QueryFullProcessImageNameW(handle, 0, buffer, ref capacity) ? buffer.ToString() : "";
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
+
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, EntryPoint = "OpenProcess")]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, EntryPoint = "CloseHandle")]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr process, int flags, System.Text.StringBuilder name, ref int size);
+
     internal static string NormalizeModulePath(string path)
     {
         if (Environment.Is64BitOperatingSystem && !string.IsNullOrWhiteSpace(path))

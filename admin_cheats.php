@@ -40,8 +40,7 @@ $navDownloadHref = 'download.php';
             <div class="sub">manage signatures, test rules, import hashes</div>
         </div>
         <div class="bar" style="margin:0">
-            <input type="password" id="token" placeholder="admin token" size="26" autocomplete="off">
-            <button class="primary" id="btnConnect">Connect</button>
+            <button class="primary" id="btnLock" title="Lock the Cheats DB and forget the saved password">&#128274; Lock</button>
         </div>
     </div>
 </header>
@@ -49,6 +48,7 @@ $navDownloadHref = 'download.php';
 <!-- Stats Dashboard -->
 <div class="wrap">
     <dl class="acm-stats" id="acmStats"></dl>
+    <div id="acmDiag" style="font-family:monospace;font-size:11.5px;color:#8b949e;padding:4px 0 0;white-space:pre-wrap;word-break:break-word;"></div>
 </div>
 
 <!-- Tab Navigation -->
@@ -265,6 +265,25 @@ abcdef123456...  (32 hex chars for MD5)"></textarea>
     </div>
 </div>
 
+<!-- Unlock Popup -->
+<div class="acm-modal-backdrop" id="pwModal" hidden>
+    <div class="acm-modal" style="max-width:400px;">
+        <div class="acm-modal-header">
+            <h3>&#128274; Cheats DB — Access</h3>
+        </div>
+        <div class="acm-modal-body">
+            <div class="acm-field">
+                <label for="pwInput">Password</label>
+                <input type="password" id="pwInput" autocomplete="off" placeholder="Enter password">
+            </div>
+            <div id="pwError" style="color:#f85149;font-size:12.5px;min-height:18px;"></div>
+        </div>
+        <div class="acm-modal-footer">
+            <button class="acm-btn acm-btn-primary" id="pwSubmit">Unlock</button>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Modal -->
 <div class="acm-modal-backdrop" id="editModal" hidden>
     <div class="acm-modal">
@@ -328,25 +347,62 @@ abcdef123456...  (32 hex chars for MD5)"></textarea>
    Admin Cheats Manager — Client-Side Logic
    ═══════════════════════════════════════════════════════════════════════════ */
 const $ = (id) => document.getElementById(id);
-const tokenBox = $('token');
-tokenBox.value = sessionStorage.getItem('acpAdminToken') || '';
+
+/* ── Self-diagnostics: every JS error and API result is shown on the page ── */
+function acmDiag(html) {
+    const d = $('acmDiag');
+    if (d) d.innerHTML = html;
+}
+window.addEventListener('error', function (e) {
+    acmDiag('<span style="color:#f85149">JS ERROR: ' + esc(String(e.message || e.type)) + ' @ line ' + e.lineno + '</span>');
+});
+window.addEventListener('unhandledrejection', function (e) {
+    acmDiag('<span style="color:#f85149">PROMISE ERROR: ' + esc(String(e.reason && e.reason.message ? e.reason.message : e.reason)) + '</span>');
+});
+
+let adminPassword = sessionStorage.getItem('acpAdminPassword') || '';
 
 let allSignatures = [];
 let connected = false;
+
+function showPwModal(message) {
+    $('pwError').textContent = message || '';
+    $('pwModal').hidden = false;
+    setTimeout(() => $('pwInput').focus(), 30);
+}
 
 function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 async function api(action, opts = {}) {
-    const token = tokenBox.value.trim();
-    const res = await fetch(`api.php?action=${action}${opts.query || ''}`, {
-        method: opts.method || 'GET',
-        headers: { 'Authorization': `Bearer ${token}`, ...(opts.body ? {'Content-Type':'application/json'} : {}) },
-        body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
+    let res;
+    try {
+        res = await fetch(`api.php?action=${action}${opts.query || ''}`, {
+            method: opts.method || 'GET',
+            headers: { 'Authorization': `Bearer ${adminPassword}`, ...(opts.body ? {'Content-Type':'application/json'} : {}) },
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+        });
+    } catch (err) {
+        acmDiag('<span style="color:#f85149">NETWORK ERROR on ' + esc(action) + ': ' + esc(String(err && err.message ? err.message : err)) + '</span>'
+            + '\nIs the PHP server running and is this page opened via http:// (not file://)?');
+        return { ok: false, error: 'Network error - see the status line above the stats.' };
+    }
     const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+    json.httpStatus = res.status;
     if (!res.ok && !json.error) json.error = `HTTP ${res.status}`;
+    if (!res.ok) {
+        acmDiag('<span style="color:#f85149">' + esc(action) + ' → HTTP ' + res.status + ': ' + esc(json.error || '') + '</span>'
+            + (res.status === 401 ? '\nWrong or missing password - unlock again.' : '')
+            + (res.status === 503 ? '\nThe server has no password configured (set adminPassword in config.php).' : ''));
+        if (res.status === 401) {
+            adminPassword = '';
+            sessionStorage.removeItem('acpAdminPassword');
+            showPwModal(json.error || 'Wrong password');
+        }
+    } else {
+        acmDiag('');
+    }
     return json;
 }
 
@@ -634,11 +690,23 @@ $('btnImport').addEventListener('click', async () => {
     }
 });
 
-/* ──────── Load & Connect ──────── */
+/* ──────── Load & Unlock ──────── */
+function adminErrorHtml(message) {
+    if (/disabled until/i.test(message || '')) {
+        return `<div class="acm-error">❌ ${esc(message)}</div>`
+            + `<div class="acm-msg" style="margin-top:10px; line-height:1.6;">`
+            + `<strong>Setup required:</strong> the server has no password configured. `
+            + `Set <code>adminPassword</code> in <code>config.php</code> (or the <code>ACS_ADMIN_PASSWORD</code> environment variable).</div>`;
+    }
+    return `<div class="acm-error">❌ ${esc(message || 'Failed to load')}</div>`;
+}
+
 async function loadSignatures() {
     const r = await api('signatures');
     if (!r.ok) {
-        $('sigTable').innerHTML = `<div class="acm-error">${esc(r.error || 'Failed to load')}</div>`;
+        if (r.httpStatus !== 401) {
+            $('sigTable').innerHTML = adminErrorHtml(r.error);
+        }
         return;
     }
     allSignatures = r.signatures || [];
@@ -647,17 +715,47 @@ async function loadSignatures() {
     connected = true;
 }
 
-$('btnConnect').addEventListener('click', async () => {
-    sessionStorage.setItem('acpAdminToken', tokenBox.value.trim());
-    $('sigTable').innerHTML = '<div class="acm-msg">Loading…</div>';
-    await loadSignatures();
+async function tryUnlock() {
+    const pw = $('pwInput').value.trim();
+    if (!pw) { $('pwError').textContent = 'Enter the password.'; return; }
+    $('pwSubmit').disabled = true;
+    adminPassword = pw;
+    const r = await api('signatures');
+    $('pwSubmit').disabled = false;
+    if (r.ok) {
+        sessionStorage.setItem('acpAdminPassword', adminPassword);
+        $('pwModal').hidden = true;
+        $('pwError').textContent = '';
+        $('pwInput').value = '';
+        $('sigTable').innerHTML = '<div class="acm-msg">Loading…</div>';
+        allSignatures = r.signatures || [];
+        renderStats(r.counts);
+        renderSignatures();
+        connected = true;
+        acmDiag('');
+    } else if (r.httpStatus !== 401) {
+        $('pwError').textContent = r.error || 'Access denied.';
+    }
+}
+
+$('pwSubmit').addEventListener('click', tryUnlock);
+$('pwInput').addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+
+$('btnLock').addEventListener('click', () => {
+    sessionStorage.removeItem('acpAdminPassword');
+    adminPassword = '';
+    allSignatures = [];
+    connected = false;
+    showPwModal('');
 });
 
-tokenBox.addEventListener('keydown', e => { if (e.key === 'Enter') $('btnConnect').click(); });
-
-// Auto-connect if token is saved
-if (tokenBox.value.trim()) {
-    setTimeout(() => $('btnConnect').click(), 100);
+// Unlock automatically with the remembered password, otherwise show the popup
+if (adminPassword) {
+    $('sigTable').innerHTML = '<div class="acm-msg">Loading…</div>';
+    loadSignatures();
+} else {
+    showPwModal('');
+    acmDiag('locked · enter the Cheats DB password to continue');
 }
 </script>
 <?php uds_theme_footbar(); ?>

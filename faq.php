@@ -90,7 +90,7 @@ require __DIR__ . '/nav.php';
                 <strong>Scan.</strong> With Counter-Strike running, the desktop app reads the live game process: loaded modules, memory regions, hooks, files, drivers and configuration.
             </li>
             <li>
-                <strong>Upload.</strong> The findings are packed into a report and cryptographically signed (HMAC-SHA256) so it cannot be edited or swapped in transit.
+                <strong>Upload.</strong> The findings are packed into a report with an HMAC-SHA256 integrity check. This detects a changed payload but is not device attestation; a player controls their own client.
             </li>
             <li>
                 <strong>Review.</strong> The dashboard stores the report, classifies each artifact, and presents a clear verdict with confirmed detections separated from lower-confidence review items.
@@ -231,9 +231,9 @@ require __DIR__ . '/nav.php';
             <summary>Share a clean scan with an admin</summary>
             <div class="inner tutorial-body">
                 <ol>
-                    <li>Open your report page and copy the <strong>Share this report</strong> link.</li>
-                    <li>Send that link to the admin. It opens only that one report.</li>
-                    <li>The link carries a key derived from the report id, so no other scan is reachable through it.</li>
+                    <li>When the scan finishes, open <strong>View Evidence</strong> in the app and click the report link to copy it.</li>
+                    <li>Send that link to the server admin.</li>
+                    <li>Admins open reports with their own access, so the link does not expose the report to anyone else.</li>
                 </ol>
             </div>
         </details>
@@ -267,6 +267,11 @@ require __DIR__ . '/nav.php';
         <details>
             <summary>Is the scanner a virus or malware?</summary>
             <div class="inner"><p>No. It is a read-only inspection tool. It opens the game process to read memory, hashes files and uploads a report. It does not inject code, modify the game, or keep running in the background.</p></div>
+        </details>
+
+        <details>
+            <summary>Why does Windows say “Windows protected your PC”?</summary>
+            <div class="inner"><p>That is Microsoft Defender SmartScreen. It warns about every new app that is not code-signed and not yet downloaded by many people — it does not mean a virus was found. The scanner is not code-signed yet. Check that the file's SHA-256 matches the one on the <a href="download.php">Download page</a>, then choose <strong>More info → Run anyway</strong>.</p></div>
         </details>
 
         <details>

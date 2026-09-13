@@ -63,13 +63,18 @@ $createdAtFmt = acp_fmt_time($createdAtRaw);
 $launchFmt = acp_fmt_time($summary['gameLaunchTime']);
 $sessionDelta = acp_session_delta_text((string) $summary['gameLaunchTime'], (string) $createdAtRaw);
 
-$detectedRows = array_merge(
+$allDetectedRows = array_merge(
     acp_items($report, 'injected'),
     acp_items($report, 'behavioral'),
     acp_items($report, 'previouslyLaunched'),
     acp_items($report, 'installedInOs'),
     acp_items($report, 'downloaded')
 );
+// Only DETECTED is a confirmed cheat; WARNING items belong in the review table below.
+$detectedRows = array_values(array_filter(
+    $allDetectedRows,
+    static fn($r) => strtoupper((string) ($r['severity'] ?? '')) === 'DETECTED'
+));
 $parsedDetections = array_map('acp_gamer_detection', $detectedRows);
 
 $allReportFindings = acp_report_findings($report);
@@ -289,12 +294,33 @@ $pdfProcesses = acp_sanitize_processes(array_slice($report['processes'] ?? [], 0
                 <span class="t-card-title">Game Client &amp; Engine</span>
                 <span class="build-badge b-<?= acp_h($buildBadge['class']) ?>"><?= acp_h($buildBadge['label']) ?></span>
             </div>
-            <div class="t-row"><span class="t-label">Distribution</span><span class="t-val"><?= $buildBadge['isSteam'] ? 'Official Steam Retail' : 'Non-Steam Client' ?></span></div>
+<?php
+            // Same rule as the report page: "Official Steam Retail" only with signature proof.
+            $engineVerified = ($buildBadge['verified'] ?? false) === true;
+            $pdfDistribution = match (true) {
+                $engineVerified && $buildBadge['isSteam'] => 'Official Steam Retail (Valve signature verified)',
+                $engineVerified && ($buildBadge['confidence'] ?? '') === 'review' => 'Steam install — engine not genuine',
+                $engineVerified && ($buildBadge['confidence'] ?? '') === 'none' => 'Unverified client',
+                !$engineVerified && $buildBadge['isSteam'] => 'Steam (not verified — old scanner)',
+                default => 'Non-Steam Client',
+            };
+?>
+            <div class="t-row"><span class="t-label">Distribution</span><span class="t-val"><?= acp_h($pdfDistribution) ?></span></div>
             <div class="t-row"><span class="t-label">Game Build</span><span class="t-val"><?= acp_h($buildBadge['cleanBuild']) ?></span></div>
+            <?php if ($engineVerified): ?>
+<?php
+            $pdfEngine = array_filter([
+                (string) ($buildBadge['engineModule'] ?? ''),
+                ($buildBadge['engineVersion'] ?? '') !== '' ? 'v' . $buildBadge['engineVersion'] : '',
+                ($buildBadge['engineBuildNumber'] ?? null) !== null ? 'build ' . $buildBadge['engineBuildNumber'] : '',
+            ]);
+?>
+            <div class="t-row"><span class="t-label">Engine Build</span><span class="t-val mono"><?= acp_h($pdfEngine ? implode(' · ', $pdfEngine) : 'not found') ?></span></div>
+            <?php endif; ?>
             <div class="t-row"><span class="t-label">Renderer / Mode</span><span class="t-val"><?= acp_h($summary['renderMode']) ?> &middot; <?= acp_h($summary['gameWindowMode']) ?></span></div>
-            <div class="t-row"><span class="t-label">Active Server</span><span class="t-val"><?= acp_h($summary['serverName'] ?: 'Standalone / Menu') ?></span></div>
-            <div class="t-row"><span class="t-label">Server Map</span><span class="t-val mono"><?= acp_h(acp_clean_map($summary['serverMap']) ?: 'Menu') ?></span></div>
-            <div class="t-row"><span class="t-label">HL Executable</span><span class="t-val mono"><?= acp_h(acp_sanitize_path($summary['hlPath'])) ?></span></div>
+            <?php $pdfServer = acs_server_view($report); ?>
+            <div class="t-row"><span class="t-label">Active Server</span><span class="t-val"><?= acp_h($pdfServer['status'] === 'connected' ? $pdfServer['name'] . ' · ' . $pdfServer['address'] : $pdfServer['name']) ?></span></div>
+            <div class="t-row"><span class="t-label">Server Map</span><span class="t-val mono"><?= acp_h($pdfServer['status'] === 'connected' ? acp_clean_map($pdfServer['map']) : $pdfServer['map']) ?></span></div>
         </div>
 
         <!-- Card 3: Security & Integrity -->
@@ -303,10 +329,10 @@ $pdfProcesses = acp_sanitize_processes(array_slice($report['processes'] ?? [], 0
                 <span class="t-card-title">Security &amp; Integrity</span>
             </div>
             <div class="t-row"><span class="t-label">Operating System</span><span class="t-val"><?= acp_h(acp_clean_os($summary['os'])) ?></span></div>
-            <div class="t-row"><span class="t-label">OpenGL Hook</span><span class="t-val"><?= $summary['hooked'] ? 'Hook Detected (' . acp_h($summary['hookedAddr']) . ')' : 'Clean (None)' ?></span></div>
-            <div class="t-row"><span class="t-label">Injected Code</span><span class="t-val"><?= $cc['injected'] > 0 ? (int)$cc['injected'] . ' Injected Mod(s)' : 'Clean (Byte-Exact)' ?></span></div>
+            <div class="t-row"><span class="t-label">OpenGL Hook</span><span class="t-val"><?= $summary['hooked'] ? ($summary['status'] === 'DETECTED' ? 'Hook Detected (' . acp_h($summary['hookedAddr']) . ')' : 'Hook signal - review (' . acp_h($summary['hookedAddr']) . ')') : 'Clean (None)' ?></span></div>
+            <div class="t-row"><span class="t-label">Injected Code</span><span class="t-val"><?php $injRev = (int) ($summary['reviewCategoryCounts']['injected'] ?? 0); ?><?= $cc['injected'] > 0 ? (int) $cc['injected'] . ' Injected Mod(s)' : ($injRev > 0 ? $injRev . ' hook/patch signal(s) - review' : 'Clean (Byte-Exact)') ?></span></div>
             <div class="t-row"><span class="t-label">HDD Serial</span><span class="t-val mono"><?= acp_h(acp_mask_hwid($summary['hddSerial'])) ?></span></div>
-            <div class="t-row"><span class="t-label">Integrity</span><span class="t-val"><?= ($report['signatureVerified'] ?? false) ? 'Verified RSA-2048' : 'Community Build' ?></span></div>
+            <div class="t-row"><span class="t-label">Client payload</span><span class="t-val"><?= ($report['signatureVerified'] ?? false) ? 'HMAC valid (not device attestation)' : 'Unverified client payload' ?></span></div>
         </div>
 
         <!-- Card 4: Session Timeline Audit -->

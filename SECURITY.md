@@ -17,7 +17,7 @@ ACS handles personal data (SteamIDs, IPs, hardware identifiers) and evidence tha
 
 | Asset | Protection |
 |---|---|
-| Report contents | HMAC-SHA256 signed end-to-end; the server can require signatures (`ACP_REQUIRE_REPORT_SIGNATURE=1`) and reject edited reports. |
+| Report contents | HMAC-SHA256 payload check; production requires it by default. It detects changed payloads but does not attest a player-controlled device. |
 | Upload credential | `ACP_API_TOKEN`, set per deployment. Ships on client machines, so it is treated as semi-public. |
 | Classification / admin | `ACP_ADMIN_TOKEN`, deliberately **separate** from the upload token. |
 | Report storage | Kept outside direct web access; `reports/*.json` denied on Apache and nginx. |

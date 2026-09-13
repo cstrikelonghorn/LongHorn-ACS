@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updated": "2026-09-11",
+  "version": 2,
+  "updated": "2026-09-13",
   "note": "Known-legitimate Counter-Strike 1.6 client distributions. A large part of the surviving CS 1.6 population does not run the retail Steam client, and several of these mods modify or detour the engine by design. Without this file those players are indistinguishable from cheaters to any scanner that checks module integrity. See clients.php for how a match is applied - matching NEVER suppresses server-side behavioural evidence, and never suppresses findings outside the rule/subject pairs a profile explicitly claims.",
   "confidenceLevels": {
     "documented": "Behaviour confirmed from the project's own source or documentation. Markers may still need hashes filled in from a real install.",
@@ -15,30 +15,65 @@
       "source": "https://github.com/CS-NextClient/NextClient",
       "engineBuild": "8684",
       "confidence": "documented",
-      "needsVerification": true,
+      "needsVerification": false,
       "notes": "Open-source CS 1.6 modification built on Steam engine build 8684 (steam_legacy branch). Its repository states that antivirus and heuristic flags are 'false positives caused by runtime detouring of engine functions' - that detouring is exactly what an inline-hook scan reports. Requires a real Steam copy; the project explicitly warns against installing it into the Steam folder because that causes a VAC ban, so a NextClient install is normally a separate copy of the game.",
       "markers": {
         "modules": [
           "nextclient.dll",
           "next_client.dll",
           "nitro_api.dll",
-          "nitro_api2.dll"
+          "nitro_api2.dll",
+          "next_engine_mini.dll",
+          "next_lib.dll",
+          "FileSystem_Proxy.dll"
         ],
         "files": [
           "nextclient.exe",
           "next_client.exe",
-          "nitro_api.dll"
+          "nitro_api.dll",
+          "nitro_api2.dll",
+          "next_engine_mini.dll",
+          "next_lib.dll",
+          "FileSystem_Proxy.dll"
         ],
         "minMatches": 1
       },
       "knownHashes": {
-        "comment": "Fill from a verified install: sha256 of hw.dll, client.dll and the marker DLL for each released build. Until populated a match is 'claimed' rather than 'verified' and gets the weaker downgrade.",
-        "sha256": []
+        "comment": "sha256 of hw.dll, client.dll, nextclient modules and verified legitimate GoldSrc files.",
+        "sha256": [
+          "41360fb47019f747230d59e382d169f5aacdbb5dd50befed2b342cf3db30a6f2",
+          "33f9c1679e5535c48905b4a24c7d55bc5ca0db03d37932e920c1b77d2abe99c0",
+          "8b4437ec8c1bd079f3bd1694c613d424f9ca11bf099394151854f31514d038e0",
+          "edbefdd9a66b71b0b0c2abb7472ab5ba0d0fca241653891bcb08d8ace532d3a9",
+          "91d6306b34bf54a3c023b8e2b3161d52ac2977ff89d6b700e42f54b48f4568f1",
+          "be45f76049a133392423679d334c69c8e1e7e82dc873eebdd229ea0341ba1b10",
+          "d73c38f0a90e04aedc66a20599faea2449aa345f6a124436ab655ecb02c151a2",
+          "5a773054ad19f33adbcb77201e44cec9a3698bdd22e352df028c165a9e75600d",
+          "f5390b2a0df777991cebe936045f19d85195eff03a947dda480a4606082c2181",
+          "64a288e7aa3c1c45bfe720c545cc38ac931627323209baf2c255a918d3f0272d",
+          "f93e9f324c209118263b65644fa1f471e24a99dc3510c1763a733db9f3b01e91",
+          "5ed6b4b10317ea24f41e4b825fd68bb09dc16c301c7267b0b355656f88b112b6",
+          "f05b2eeb851b174ef2b39c4728687915648ae33780a65cdf7f0c7ce99e6a67af",
+          "f5522d2c936de8d53f97a6ec439d8f8391cb50a0bc6008a399f9454c00929d35",
+          "ac1f83180e07ac2b3d1e6f80f94aee0b2591be13e8a1fe63998cf7f0a9f18f1e",
+          "84e6875f1869b8cfd73525f0c04f1bf2cf0d0d08b1226f62cfd44ff14fe0345d",
+          "b2b88a7555e598d5d84957de6e60c66260bd1683e2ef7a0008d17f55ce5bd790",
+          "a20010e097e5a4ae7f7065da7b290cb535d1ef98a6a7cc299a343e26d688aa5d",
+          "391b7e66004d7845f5caa7d70f106dac7d0b49538954c55601ed7b5985c3d699",
+          "3231d251c8aa4003b3b23196fe849b97c5ea3ac2d3549980e83bceb9078b4cf7",
+          "f1be4b46ac46bc9a26ae017c95711e5aedc11ed602908b62eface4e8d2b28aba",
+          "55e64559ba6acc4c0efc3bef92382714a6b9b8a4bd4696e8c920e709c803b250",
+          "f8ce56ba4d4a0a8c1192d31736b4420efe0b8efcdb39805203e0344f290b3b04"
+        ]
       },
       "explains": [
         {
           "ruleIds": [
-            "acs-inline-hook"
+            "acs-inline-hook",
+            "acp-inline-hook",
+            "acp-module-code-patched",
+            "acp-iat-hook",
+            "acp-eat-hook"
           ],
           "subjectMatch": [
             "hw.dll",
@@ -46,34 +81,31 @@
             "opengl32.dll",
             "gameui.dll",
             "vgui2.dll",
-            "filesystem_stdio.dll"
+            "filesystem_stdio.dll",
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
           ],
           "reason": "NextClient installs runtime detours on engine functions by design. Its own repository documents these as heuristic false positives."
         },
         {
           "ruleIds": [
-            "acs-foreign-module"
+            "acs-foreign-module",
+            "acp-foreign-module"
           ],
           "subjectMatch": [
             "nextclient",
             "next_client",
+            "next_lib",
+            "next_engine_mini",
             "nitro_api",
+            "nitro_api2",
+            "filesystem_proxy",
             "steam_api.dll",
             "steam_api_c.dll",
             "steamclient.dll"
           ],
           "reason": "NextClient's own modules and Steam API bridge."
-        },
-        {
-          "ruleIds": [
-            "acp-module-code-patched"
-          ],
-          "subjectMatch": [
-            "steam_api.dll",
-            "steam_api_c.dll",
-            "steamclient.dll"
-          ],
-          "reason": "NextClient's Steam API implementation."
         }
       ],
       "moduleIntegrity": {
@@ -84,7 +116,12 @@
           "vgui2.dll",
           "steam_api.dll",
           "steam_api_c.dll",
-          "steamclient.dll"
+          "steamclient.dll",
+          "filesystem_stdio.dll",
+          "filesystem_proxy.dll",
+          "next_engine_mini.dll",
+          "next_lib.dll",
+          "nitro_api2.dll"
         ],
         "reason": "Engine, client and Steam API modules carry NextClient's runtime detours, so their .text will not match the file on disk."
       }
@@ -344,8 +381,7 @@
           "multiemulator.ini",
           "multiemulator.dll",
           "multiemu.dll",
-          "setti.ini",
-          "steam_emu.ini"
+          "setti.ini"
         ],
         "minMatches": 1
       },
@@ -486,8 +522,7 @@
         "files": [
           "goldberg",
           "steam_settings",
-          "libsteam_api",
-          "steam_emu.ini"
+          "libsteam_api"
         ],
         "minMatches": 1
       },
@@ -839,6 +874,33 @@
       }
     },
     {
+      "id": "esk",
+      "name": "ESK Edition",
+      "vendor": "ESK community build",
+      "url": "",
+      "engineBuild": "4554",
+      "confidence": "documented",
+      "needsVerification": true,
+      "notes": "Recognised from the desktop engine identity result. This is a claimed compatibility profile until release hashes are collected; it never suppresses unrelated hooks, cheat names, hashes, or server behavior.",
+      "markers": {
+        "engineFamilies": ["esk"],
+        "modules": [],
+        "files": [],
+        "minMatches": 1
+      },
+      "knownHashes": { "sha256": [] },
+      "explains": [
+        {
+          "ruleIds": ["acp-steam-emulator-artifact", "acp-local-steamclient", "acp-steam-overlay-not-loaded", "acs-client-distribution", "acs-engine-no-version-resource"],
+          "reason": "ESK is a non-Steam distribution and legitimately carries its own Steam bridge and patched engine metadata."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [],
+        "reason": "No blanket integrity exception. Runtime code still has to match the ESK file on disk."
+      }
+    },
+    {
       "id": "nonsteam-repack",
       "name": "Non-Steam repack",
       "vendor": "various",
@@ -897,7 +959,27 @@
             "Steam.dll",
             "FileSystem_Steam.dll",
             "setti.ini",
-            "steamemu.ini"
+            "steamemu.ini",
+            "a3dapi.dll",
+            "proxy.dll",
+            "FileSystem_Proxy.dll",
+            "next_engine_mini.dll",
+            "next_lib.dll",
+            "nitro_api.dll",
+            "nitro_api2.dll",
+            "chromehtml.dll",
+            "SDL2.dll",
+            "Mss32.dll",
+            "tier0.dll",
+            "vstdlib.dll",
+            "avcodec-53.dll",
+            "avformat-53.dll",
+            "avutil-51.dll",
+            "icudt.dll",
+            "libcef.dll",
+            "Core.dll",
+            "DemoPlayer.dll",
+            "FileSystem_Stdio.dll"
           ],
           "reason": "Offline bot, audio, bundled Steam-emulator and open-source ReHLDS server modules shipped with practically every non-Steam edition."
         }

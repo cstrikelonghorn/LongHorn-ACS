@@ -197,6 +197,61 @@ function vt_upload_file(string $filePath, string $apiKey): array
 }
 
 /**
+ * VirusTotal's identifier for a URL: the URL as unpadded base64url.
+ */
+function vt_url_to_id(string $url): string
+{
+    return rtrim(strtr(base64_encode($url), '+/', '-_'), '=');
+}
+
+/**
+ * Submits a URL to /api/v3/urls for scanning. A successful submission only queues an
+ * analysis - it is not a verdict.
+ */
+function vt_submit_url(string $url, string $apiKey): array
+{
+    if ($apiKey === '') {
+        return ['ok' => false, 'error' => 'VirusTotal API key is empty'];
+    }
+
+    $ch = curl_init('https://www.virustotal.com/api/v3/urls');
+    $opts = [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query(['url' => $url]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'x-apikey: ' . $apiKey,
+            'Accept: application/json',
+            'Content-Type: application/x-www-form-urlencoded',
+        ],
+        CURLOPT_TIMEOUT => 20,
+    ];
+    $ca = vt_ca_bundle();
+    if ($ca !== '') $opts[CURLOPT_CAINFO] = $ca;
+    curl_setopt_array($ch, $opts);
+
+    $response = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false || $curlErr !== '') {
+        return ['ok' => false, 'error' => 'URL submission failed: ' . $curlErr];
+    }
+
+    $json = @json_decode((string) $response, true);
+    if ($httpCode === 200 && isset($json['data']['id'])) {
+        return ['ok' => true, 'status' => 200, 'analysis_id' => (string) $json['data']['id']];
+    }
+
+    return [
+        'ok' => false,
+        'status' => $httpCode,
+        'error' => $json['error']['message'] ?? ('HTTP ' . $httpCode),
+    ];
+}
+
+/**
  * Converts a VirusTotal analysis `stats` block (identical shape on both the
  * /files/{id} report and the /analyses/{id} endpoints) into the verdict
  * numbers the download gate relies on. Returns null when the block carries

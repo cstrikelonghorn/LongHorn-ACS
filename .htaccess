@@ -5,6 +5,11 @@
 # 1. Disable Directory Listings
 Options -Indexes
 
+# 2. Isolate from parent mod_rewrite rules
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+</IfModule>
+
 # 2. Block direct HTTP access to sensitive development, source & data files
 <FilesMatch "(^\.|\.(md|sql|sqlite|log|bak|cs|csproj|sln|pdb|deps\.json|runtimeconfig\.json)$)">
     <IfModule mod_authz_core.c>
@@ -14,6 +19,10 @@ Options -Indexes
         Order deny,allow
         Deny from all
     </IfModule>
+</FilesMatch>
+
+<FilesMatch "^(api_token|admin_token|report_secret|telemetry_secret)\.txt$">
+    Require all denied
 </FilesMatch>
 
 # 3. Security Headers

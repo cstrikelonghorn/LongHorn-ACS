@@ -16,7 +16,7 @@ declare(strict_types=1);
 // derived index holding the one thing the list views actually need: the summary. It can be
 // deleted at any time and will rebuild itself.
 
-const ACP_REPORT_INDEX_SCHEMA = 2;
+const ACP_REPORT_INDEX_SCHEMA = 3;
 
 // How many not-yet-indexed reports one request will absorb. Bounds the worst case on a
 // cold index while still converging without anyone running a tool.
@@ -97,6 +97,11 @@ SQL);
         } catch (Throwable $e) {
             error_log('[ACS] report index server backfill skipped: ' . $e->getMessage());
         }
+    }
+    if ($current < 3) {
+        // Finding policy v2 changes effective severities. The index is derived data, so force
+        // every stored report through the current policy on the next bounded sync.
+        $pdo->exec('DELETE FROM reports');
     }
 
     foreach ([
@@ -218,6 +223,7 @@ function acp_report_index_sync(array $config, PDO $pdo, int $budget = ACP_REPORT
             continue;
         }
         $data['id'] = $data['id'] ?? $id;
+        acp_apply_current_finding_policy($data, $config);
         acp_report_index_put($pdo, $data, $mtime);
         $indexed++;
     }

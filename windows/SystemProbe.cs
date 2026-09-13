@@ -130,7 +130,12 @@ internal static class SystemProbe
                         }
 
                         var raw = Marshal.ReadIntPtr(p, IntPtr.Size * 2);
-                        if (!DuplicateHandle(holder, raw, GetCurrentProcess(), out var dup, 0, false, DuplicateSameAccess)) {
+                        // Ask for query rights on the copy. External memory readers open the game
+                        // with VM_READ alone, and a copy with only that access cannot answer
+                        // GetProcessId - so those holders, the ones this check exists for, used to
+                        // be skipped. Fall back to the handle's own access if query is refused.
+                        if (!DuplicateHandle(holder, raw, GetCurrentProcess(), out var dup, ProcessQueryLimitedInformation, false, 0)
+                            && !DuplicateHandle(holder, raw, GetCurrentProcess(), out dup, 0, false, DuplicateSameAccess)) {
                             continue;
                         }
 
@@ -218,9 +223,13 @@ internal static class SystemProbe
         try
         {
             using var p = Process.GetProcessById(pid);
-            string path;
-            try { path = p.MainModule?.FileName ?? ""; }
-            catch { path = ""; }
+            // QueryFullProcessImageName also works for 64-bit processes from 32-bit ACS.
+            var path = ModuleIntegrity.ProcessImagePath(pid);
+            if (path == "")
+            {
+                try { path = p.MainModule?.FileName ?? ""; }
+                catch { path = ""; }
+            }
             return (p.ProcessName, path);
         }
         catch
@@ -233,9 +242,9 @@ internal static class SystemProbe
     // 2. Threads running from nowhere
     // ---------------------------------------------------------------------------------------
     //
-    // Every legitimate thread starts inside a mapped module. A thread whose Win32 start address
-    // belongs to no module is running code the loader never mapped -- a manually mapped payload
-    // or a remotely created thread. This is high signal and very low false positive.
+    // A thread whose Win32 start address belongs to no module may be manually mapped code, but
+    // runtime-generated code and instrumentation can also produce this shape. The caller treats
+    // it as review evidence until another detector corroborates it.
 
     internal static List<ForeignThread> FindForeignThreads(Process target, IReadOnlyList<(string Name, long Base, long Size)> modules, out string? note)
     {
@@ -364,6 +373,7 @@ internal static class SystemProbe
 
     private const int ProcessDupHandle = 0x0040;
     private const uint DuplicateSameAccess = 0x00000002;
+    private const uint ProcessQueryLimitedInformation = 0x00001000;
 
     [DllImport("ntdll.dll")]
     private static extern int NtQuerySystemInformation(int infoClass, IntPtr buffer, int length, out int returnLength);

@@ -11,7 +11,9 @@ $reportId = (string) ($_GET['report'] ?? '');
 // is established. A share-key viewer gets exactly the one report their key names; only an
 // admin (or localhost) sees the list of everyone else's scans.
 acp_admin_remember_token($acpConfig);
+$isPublic = !empty($acpConfig['publicDashboard']);
 $isAdminView = acp_admin_authenticated($acpConfig) || acp_is_local_request();
+$canViewList = $isPublic || $isAdminView;
 
 if ($reportId !== '') {
     acp_require_report_access($acpConfig, $reportId);
@@ -26,18 +28,18 @@ $searchScope = (string) ($_GET['by'] ?? 'all');
 if (!in_array($searchScope, ['all', 'name', 'server'], true)) {
     $searchScope = 'all';
 }
-$isSearch = $isAdminView && $searchQuery !== '';
+$isSearch = $canViewList && $searchQuery !== '';
 
 try {
     acp_ensure_dir($acpConfig['reportsDir']);
     $database = acp_load_database($acpConfig);
     $counts = $database['counts'] ?? [];
     $selectedReport = $reportId !== '' ? acp_load_report($acpConfig, $reportId) : null;
-    $reportStats = $isAdminView ? acp_report_status_counts($acpConfig) : ['total' => 0, 'detected' => 0, 'clean' => 0];
+    $reportStats = $canViewList ? acp_report_status_counts($acpConfig) : ['total' => 0, 'detected' => 0, 'clean' => 0];
     $listTotal = $isSearch ? acp_search_report_count($acpConfig, $searchQuery, $searchScope) : $reportStats['total'];
     $totalPages = max(1, (int) ceil($listTotal / $perPage));
     $page = min($page, $totalPages);
-    $recentReports = !$isAdminView
+    $recentReports = !$canViewList
         ? []
         : ($isSearch
             ? acp_search_reports($acpConfig, $searchQuery, $searchScope, $perPage, ($page - 1) * $perPage)
@@ -65,7 +67,7 @@ if ($selectedReport !== null && (string) ($_GET['download'] ?? '') === 'json') {
 // report, or the newest report when the dashboard is shown.
 $summary = $selectedReport !== null ? acp_report_summary($selectedReport) : null;
 $navReportId = (string) ($selectedReport['id'] ?? '');
-if ($navReportId === '' && $isAdminView) {
+if ($navReportId === '' && $canViewList) {
     $newestReports = acp_recent_reports($acpConfig, 1);
     $navReportId = (string) ($newestReports[0]['id'] ?? '');
 }
@@ -231,39 +233,6 @@ function acp_field_group(string $label): void
     <link rel="stylesheet" href="assets/acp.css?v=<?= filemtime(__DIR__ . '/assets/acp.css') ?>">
 </head>
 <body>
-<?php
-// Share link: lets an admin hand an accused player (or another admin) one link to this
-// single report, without giving out the admin token and without exposing any other scan.
-$acsShareKey = ($isAdminView && $selectedReport !== null)
-    ? acp_report_view_key($acpConfig, $reportId)
-    : '';
-if ($acsShareKey !== ''):
-    $acsShareUrl = 'index.php?report=' . rawurlencode($reportId) . '&k=' . $acsShareKey;
-?>
-<div class="wrap" style="padding-block:10px 0">
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13px;
-                border:1px solid var(--line,#232a34);border-radius:6px;padding:8px 12px">
-        <strong style="font-weight:600">Share this report</strong>
-        <input id="acs-share" readonly value="<?= acp_h($acsShareUrl) ?>"
-               style="flex:1 1 320px;min-width:0;font:inherit;font-family:ui-monospace,monospace;
-                      background:transparent;color:inherit;border:1px solid var(--line,#232a34);
-                      border-radius:4px;padding:5px 8px">
-        <button type="button" id="acs-share-copy" style="font:inherit;cursor:pointer;padding:5px 12px;
-                border-radius:4px;border:1px solid var(--line,#232a34);background:transparent;color:inherit">Copy</button>
-        <span style="opacity:.65">Opens this report only. No admin token needed.</span>
-    </div>
-</div>
-<script>
-document.getElementById('acs-share-copy')?.addEventListener('click', function () {
-    var field = document.getElementById('acs-share');
-    field.select();
-    navigator.clipboard?.writeText(field.value).then(
-        () => { this.textContent = 'Copied'; setTimeout(() => { this.textContent = 'Copy'; }, 1500); },
-        () => { this.textContent = 'Press Ctrl+C'; }
-    );
-});
-</script>
-<?php endif; ?>
 <header>
     <div class="wrap topbar">
         <div class="brand">
@@ -487,18 +456,57 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                     </div>
 
                     <div class="telemetry-rows">
+<?php
+                        // "GENUINE STEAM" is only ever printed when the scanner proved it with
+                        // Valve signatures. Older reports carry no such proof, so a Steam guess
+                        // from them is labelled as a guess.
+                        $engineVerified = ($buildBadge['verified'] ?? false) === true;
+                        if ($engineVerified && $buildBadge['isSteam']) {
+                            [$pillClass, $pillText] = ['is-steam', 'GENUINE STEAM · SIGNATURE VERIFIED'];
+                        } elseif ($engineVerified && ($buildBadge['confidence'] ?? '') === 'review') {
+                            [$pillClass, $pillText] = ['is-review', 'STEAM · ENGINE NOT GENUINE'];
+                        } elseif ($engineVerified && ($buildBadge['confidence'] ?? '') === 'none') {
+                            [$pillClass, $pillText] = ['is-nonsteam', 'UNVERIFIED CLIENT'];
+                        } elseif (!$engineVerified && $buildBadge['isSteam']) {
+                            [$pillClass, $pillText] = ['is-nonsteam', 'STEAM · NOT VERIFIED (OLD SCANNER)'];
+                        } else {
+                            [$pillClass, $pillText] = ['is-nonsteam', 'NON-STEAM CLIENT'];
+                        }
+?>
                         <div class="t-row">
                             <span class="t-label">Distribution</span>
                             <span class="t-value">
-                                <span class="client-type-pill <?= $buildBadge['isSteam'] ? 'is-steam' : 'is-nonsteam' ?>">
-                                    <?= $buildBadge['isSteam'] ? 'GENUINE STEAM' : 'NON-STEAM CLIENT' ?>
-                                </span>
+                                <span class="client-type-pill <?= $pillClass ?>"><?= acp_h($pillText) ?></span>
                             </span>
                         </div>
                         <div class="t-row">
                             <span class="t-label">Game Build</span>
                             <span class="t-value highlight-val"><?= acp_h($buildBadge['cleanBuild']) ?></span>
                         </div>
+                        <?php if ($engineVerified): ?>
+<?php
+                        // Exactly what the engine reports about itself: its version and the build
+                        // number it prints. The compile time stays in the report data.
+                        $engineParts = [];
+                        if (($buildBadge['engineVersion'] ?? '') !== '') {
+                            $engineParts[] = 'v' . $buildBadge['engineVersion'];
+                        }
+                        if (($buildBadge['engineBuildNumber'] ?? null) !== null) {
+                            $engineParts[] = 'build ' . $buildBadge['engineBuildNumber'];
+                        }
+?>
+                        <div class="t-row">
+                            <span class="t-label">Engine Build</span>
+                            <span class="t-value">
+                                <?php if (($buildBadge['engineModule'] ?? '') !== ''): ?>
+                                    <span class="render-chip"><?= acp_h($buildBadge['engineModule']) ?></span>
+                                    <?php if ($engineParts): ?><strong class="mono"><?= acp_h(implode(' · ', $engineParts)) ?></strong><?php endif; ?>
+                                <?php else: ?>
+                                    <span class="dim-text">Engine module not found</span>
+                                <?php endif; ?>
+                            </span>
+                        </div>
+                        <?php endif; ?>
                         <div class="t-row">
                             <span class="t-label">Renderer &amp; Window</span>
                             <span class="t-value">
@@ -506,37 +514,52 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                                 <span class="display-mode-chip"><?= acp_h($summary['gameWindowMode'] ?: 'Unknown') ?></span>
                             </span>
                         </div>
+                        <?php $serverView = acs_server_view($selectedReport); ?>
                         <div class="t-row">
                             <span class="t-label">Active Server</span>
                             <span class="t-value srv-cell">
-                                <?php if ($summary['serverName'] !== '' || $summary['serverAddress'] !== ''): ?>
-                                    <div class="srv-name" title="<?= acp_h($summary['serverName']) ?>">
+                                <?php if ($serverView['status'] === 'connected'): ?>
+                                    <div class="srv-name" title="<?= acp_h($serverView['name']) ?>">
                                         <span class="srv-live-dot"></span>
-                                        <?= acp_h($summary['serverName'] ?: 'Game Server') ?>
+                                        <?= acp_h($serverView['name']) ?>
                                     </div>
-                                    <div class="srv-addr mono"><?= acp_h($summary['serverAddress']) ?></div>
+                                    <div class="srv-addr mono"><?= acp_h($serverView['address']) ?></div>
                                 <?php else: ?>
-                                    <span class="dim-text">Standalone / Main Menu</span>
+                                    <span class="dim-text"><?= acp_h($serverView['name']) ?></span>
                                 <?php endif; ?>
+                                <div class="srv-addr" title="<?= acp_h($serverView['note']) ?>"><?= acp_h($serverView['note']) ?></div>
                             </span>
                         </div>
                         <div class="t-row">
                             <span class="t-label">Server Map</span>
                             <span class="t-value">
-                                <?php if ($summary['serverMap'] !== ''): ?>
-                                    <span class="map-chip"><?= acp_h(acp_clean_map($summary['serverMap'])) ?></span>
+                                <?php if ($serverView['status'] === 'connected' && $serverView['map'] !== 'Map not reported by server'): ?>
+                                    <span class="map-chip"><?= acp_h(acp_clean_map($serverView['map'])) ?></span>
                                 <?php else: ?>
-                                    <span class="dim-text">None (Menu)</span>
+                                    <span class="dim-text"><?= acp_h($serverView['map']) ?></span>
                                 <?php endif; ?>
                             </span>
                         </div>
-                        <div class="t-row">
-                            <span class="t-label">HL Executable Path</span>
-                            <span class="t-value mono hl-path-val" title="<?= acp_h(acp_sanitize_path($summary['hlPath'])) ?>">
-                                <?= acp_h($summary['hlPath'] !== '' ? acp_sanitize_path($summary['hlPath']) : 'Not found') ?>
-                            </span>
-                        </div>
                     </div>
+
+                    <?php if (!empty($buildBadge['evidence'])): ?>
+                    <!-- The facts the verdict was built from, each with where it was read. An admin
+                         can check every one of these; none of them is a label. -->
+                    <details class="engine-evidence">
+                        <summary>How this client was verified (<?= count($buildBadge['evidence']) ?> facts)</summary>
+                        <dl>
+                            <?php foreach ($buildBadge['evidence'] as $fact): ?>
+                                <div class="ev-row">
+                                    <dt><?= acp_h($fact['name']) ?></dt>
+                                    <dd>
+                                        <span class="ev-value mono"><?= acp_h(acp_sanitize_path($fact['value'])) ?></span>
+                                        <span class="ev-source"><?= acp_h($fact['source']) ?></span>
+                                    </dd>
+                                </div>
+                            <?php endforeach; ?>
+                        </dl>
+                    </details>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Card 3: Security & Integrity Health -->
@@ -555,8 +578,10 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                         <div class="t-row">
                             <span class="t-label">OpenGL Inline Hook</span>
                             <span class="t-value">
-                                <?php if ($summary['hooked']): ?>
+                                <?php if ($summary['hooked'] && $summary['status'] === 'DETECTED'): ?>
                                     <span class="health-chip danger"><span class="chip-dot"></span>HOOK DETECTED (<?= acp_h($summary['hookedAddr']) ?>)</span>
+                                <?php elseif ($summary['hooked']): ?>
+                                    <span class="health-chip neutral"><span class="chip-dot"></span>HOOK SIGNAL &mdash; review (<?= acp_h($summary['hookedAddr']) ?>)</span>
                                 <?php else: ?>
                                     <span class="health-chip ok"><span class="chip-dot"></span>CLEAN (No inline hooks)</span>
                                 <?php endif; ?>
@@ -565,8 +590,11 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                         <div class="t-row">
                             <span class="t-label">Process Memory Code</span>
                             <span class="t-value">
+                                <?php $injectReview = (int) ($summary['reviewCategoryCounts']['injected'] ?? 0); ?>
                                 <?php if ($cc['injected'] > 0): ?>
                                     <span class="health-chip danger"><span class="chip-dot"></span><?= (int)$cc['injected'] ?> Injected Mod(s)</span>
+                                <?php elseif ($injectReview > 0): ?>
+                                    <span class="health-chip neutral"><span class="chip-dot"></span><?= $injectReview ?> hook/patch signal(s) &mdash; review</span>
                                 <?php else: ?>
                                     <span class="health-chip ok"><span class="chip-dot"></span>Byte-Exact to Disk</span>
                                 <?php endif; ?>
@@ -577,12 +605,12 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                             <span class="t-value"><?= (int)($counts['totalSignatures'] ?? count($database['signatures'] ?? [])) ?> Definitions</span>
                         </div>
                         <div class="t-row">
-                            <span class="t-label">Cryptographic Integrity</span>
+                            <span class="t-label">Client Payload Check</span>
                             <span class="t-value">
                                 <?php if (($selectedReport['signatureVerified'] ?? false) === true): ?>
-                                    <span class="health-chip ok"><span class="chip-dot"></span>Verified RSA-2048</span>
+                                    <span class="health-chip ok"><span class="chip-dot"></span>HMAC valid &mdash; not device attestation</span>
                                 <?php else: ?>
-                                    <span class="health-chip neutral">Community / Local build</span>
+                                    <span class="health-chip neutral">Client payload unverified</span>
                                 <?php endif; ?>
                             </span>
                         </div>
@@ -615,6 +643,23 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                             <span class="t-label">Scan Duration</span>
                             <span class="t-value mono">
                                 <?= acp_h(acp_fmt_duration_clean((int) $summary['scanDurationMs'])) ?>
+                            </span>
+                        </div>
+                        <?php
+                        // Which exact app produced this report. The version names a release; the
+                        // build is the executable's own fingerprint, so two different builds that
+                        // both call themselves 1.0.0 can no longer be mistaken for one another.
+                        $scannerBuild = (string) ($selectedReport['scannerBuild'] ?? '');
+                        ?>
+                        <div class="t-row">
+                            <span class="t-label">Scanner App</span>
+                            <span class="t-value mono">
+                                v<?= acp_h($summary['scannerVersion'] ?: '?') ?>
+                                <?php if ($scannerBuild !== ''): ?>
+                                    <span class="render-chip" title="First 12 hex digits of the scanner executable's SHA-256">build <?= acp_h($scannerBuild) ?></span>
+                                <?php else: ?>
+                                    <span class="dim-text">build not recorded (older app)</span>
+                                <?php endif; ?>
                             </span>
                         </div>
                         <div class="t-row">
@@ -727,7 +772,10 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
             </div>
 
             <?php
-            $detectedRows = array_merge(
+            // Only a DETECTED finding is a confirmed cheat. WARNING-level evidence (overlay
+            // render hooks, private RWX regions, unclassified files) must not be shown under
+            // "Violations / Injected" as CONFIRMED - it belongs in the Review Evidence panel.
+            $allDetectedRows = array_merge(
                 acp_items($selectedReport, 'injected'),
                 acp_items($selectedReport, 'loaded'),
                 acp_items($selectedReport, 'resources'),
@@ -736,6 +784,10 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                 acp_items($selectedReport, 'installedInOs'),
                 acp_items($selectedReport, 'downloaded')
             );
+            $detectedRows = array_values(array_filter(
+                $allDetectedRows,
+                static fn($r) => strtoupper((string) ($r['severity'] ?? '')) === 'DETECTED'
+            ));
             $parsedDetections = array_map('acp_gamer_detection', $detectedRows);
             $totalDetections = count($parsedDetections);
 
@@ -893,7 +945,7 @@ document.getElementById('acs-share-copy')?.addEventListener('click', function ()
                     </table>
                 </div>
             <?php else: ?>
-                <div class="empty-panel-msg" style="padding:16px;text-align:center;color:var(--muted);font-style:italic;">No confirmed cheat evidence on this machine. Verified clean.</div>
+                <div class="empty-panel-msg" style="padding:16px;text-align:center;color:var(--muted);font-style:italic;">No confirmed cheat evidence. WARNING-level items, if any, are listed under Review Evidence below.</div>
             <?php endif; ?>
         </section>
 

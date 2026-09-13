@@ -23,7 +23,7 @@ php -l index.php                # syntax check a file
 ```powershell
 dotnet restore windows/ACPScanner.csproj
 dotnet build   windows/ACPScanner.csproj
-dotnet publish windows/ACPScanner.csproj -c Release -r win-x64 --self-contained
+dotnet publish windows/ACPScanner.csproj -c Release
 ```
 
 ## Tests

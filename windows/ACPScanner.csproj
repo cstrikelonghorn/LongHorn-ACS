@@ -6,13 +6,52 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>ACPScanner</AssemblyName>
-    <Version>3.3.1-beta.1</Version>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <!-- Shown in the exe's Properties > Details; without these every field reads "ACPScanner". -->
+    <Company>LongHorn</Company>
+    <Product>LongHorn ACS Scanner</Product>
+    <AssemblyTitle>LongHorn ACS Scanner</AssemblyTitle>
+    <Description>Counter-Strike 1.6 anti-cheat scanner</Description>
+    <Copyright>Copyright (c) 2026 LongHorn / cslonghorn.com</Copyright>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\acs.ico</ApplicationIcon>
+    <!-- Application manifest configured for standard user execution (asInvoker). -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <!-- One app, one place: every publish writes here, and download.php serves this folder.
+         Anything under bin\ or obj\ is a temporary build folder, not a copy of the app. -->
+    <PublishDir>$(MSBuildProjectDirectory)\release\</PublishDir>
+    <AcsApiToken Condition="'$(AcsApiToken)' == ''">a676018307afb5ac8570ae564cc62a25cd668b15933d2122</AcsApiToken>
   </PropertyGroup>
+  <!-- Publishing produces one self-contained 32-bit executable: a 32-bit program runs on both
+       32-bit and 64-bit Windows, so every player gets the same file. (The game itself, hl.exe,
+       is 32-bit too.) Ordinary builds stay architecture-neutral so the test suite runs as is.
+       64-bit Windows specifics a 32-bit process meets - System32 redirection, reading 64-bit
+       processes - are handled in ModuleIntegrity.NativeFilePath / ProcessImagePath. -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+  <!-- A single executable and nothing else. The artwork is compiled in and no settings file is
+       copied. Operator builds may embed their public endpoint and upload-only credential;
+       environment variables or an acp-settings.json file can override them at runtime. -->
   <ItemGroup>
-    <Content Include="Assets\acp-cyber-background.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Assets\acs-hero.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Assets\acs-logo.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="acp-settings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\acs-hero.png" LogicalName="ACS.Assets.acs-hero.png" />
+    <EmbeddedResource Include="Assets\acs-logo.png" LogicalName="ACS.Assets.acs-logo.png" />
+    <None Remove="acp-settings.json" />
+  </ItemGroup>
+  <!-- The public upload credential is injected only into an operator build. It is an access
+       token, not an attestation secret: a desktop user can always inspect their own binary. -->
+  <ItemGroup Condition="'$(AcsApiToken)' != ''">
+    <AssemblyMetadata Include="AcsApiToken" Value="$(AcsApiToken)" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>ScannerChecks</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

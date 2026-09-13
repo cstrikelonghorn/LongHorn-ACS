@@ -121,6 +121,8 @@ function uds_theme_footbar(): void
     </div>
 
     <div class="uds-fb-right">
+        <a class="uds-fb-link uds-fb-admin" href="admin_cheats.php" title="Staff area">Cheats DB</a>
+        <span class="uds-fb-divider" aria-hidden="true"></span>
         <a class="uds-fb-link" href="privacy.php">Privacy Policy</a>
         <span class="uds-fb-divider" aria-hidden="true"></span>
         <a class="uds-fb-link" href="terms.php">Terms of Use</a>

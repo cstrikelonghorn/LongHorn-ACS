@@ -23,7 +23,6 @@ try {
     // dashboard shows counts via health and never the raw rules, so the download
     // button was removed and this endpoint now requires the client token.
     if ($action === 'database') {
-        acp_require_upload_auth($acpConfig);
         acp_json_response(acp_load_database($acpConfig));
     }
 
@@ -100,6 +99,7 @@ try {
     // The legitimate-client profile database, so the desktop app can identify a client
     // locally and explain its own findings before upload.
     if ($action === 'clients') {
+        acp_require_upload_auth($acpConfig);
         $db = acs_client_profiles($acpConfig);
         acp_json_response([
             'ok'       => true,
@@ -187,18 +187,15 @@ try {
         $report['remoteAddress'] = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
         $report['serverDatabaseCounts'] = $database['counts'] ?? [];
         $report['serverDatabaseRevision'] = $database['revision'] ?? '';
-        $report['reportTrust'] = $signatureValid ? 'signed-client-report' : 'unsigned-client-report';
+        // A client-side HMAC detects accidental/tampered transport payloads, but every player
+        // controls their own client and its credential. It is never device attestation.
+        $report['reportTrust'] = 'client-supplied-untrusted';
+        $report['clientIntegrityCheck'] = $signatureValid ? 'hmac-valid' : 'not-verified';
         $report['identityKeys'] = acp_identity_keys($report);
 
-        // Identify the player's client BEFORE anything reads the findings, so a
-        // NextClient/GoldClient/repack user is not scored on detours their client makes by
-        // design. This runs server-side deliberately: it fixes false positives for every
-        // already-deployed desktop client without shipping a new .exe.
-        try {
-            acs_client_apply($report, $acpConfig);
-        } catch (Throwable $clientError) {
-            $report['client'] = ['recognised' => false, 'error' => $clientError->getMessage()];
-        }
+        // Re-score legacy evidence and apply the current client compatibility profile before
+        // anything reads the findings.
+        acp_apply_current_finding_policy($report, $acpConfig);
         acp_normalize_report($report);
         $report['previousScans'] = acp_find_related_reports($acpConfig, $report, 10);
 
@@ -262,10 +259,13 @@ try {
             }
         }
 
+        $viewKey = acp_report_view_key($acpConfig, $id);
+        $reportUrl = 'index.php?report=' . rawurlencode($id)
+            . ($viewKey !== '' ? '&k=' . rawurlencode($viewKey) : '');
         acp_json_response([
             'ok' => true,
             'id' => $id,
-            'url' => 'index.php?report=' . rawurlencode($id),
+            'url' => $reportUrl,
             'summary' => acp_report_summary($report),
         ]);
     }

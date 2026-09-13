@@ -11,6 +11,13 @@
    after uds_theme_head(), ties lh-style.css while winning on source order.
    ========================================================================== */
 
+/* ------------------------------------------------------------- hidden attr - */
+/* The hidden attribute must always win, even over scoped display rules like
+   html[data-uds-theme] .acm-modal-backdrop { display: flex }. Without this,
+   a "hidden" full-screen modal backdrop stays on screen and swallows every
+   click on the page. */
+[hidden] { display: none !important; }
+
 /* ------------------------------------------------------------- page shell - */
 html[data-uds-theme] main {
     width: auto;
@@ -1472,6 +1479,78 @@ html[data-uds-theme] .health-chip.danger {
 
 html[data-uds-theme] .health-chip.danger .chip-dot { background: var(--danger); box-shadow: none; }
 
+/* Unsigned, but not alarming: a non-Steam launcher is not a detection. */
+html[data-uds-theme] .health-chip.warn {
+    color: color-mix(in srgb, var(--warn) 28%, var(--muted));
+    background: color-mix(in srgb, var(--warn) 1.5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 7%, transparent);
+}
+
+html[data-uds-theme] .health-chip.warn .chip-dot { background: var(--warn); box-shadow: none; }
+
+/* Steam launcher with a non-Valve engine: the one engine state worth a red pill. */
+html[data-uds-theme] .client-type-pill.is-review {
+    --pill-accent: var(--danger);
+}
+
+/* "How this client was verified" - the facts behind the engine verdict. */
+html[data-uds-theme] .engine-evidence {
+    margin-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--muted) 14%, transparent);
+    padding-top: 8px;
+}
+
+html[data-uds-theme] .engine-evidence summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    list-style-position: inside;
+}
+
+html[data-uds-theme] .engine-evidence summary:hover { color: var(--text); }
+
+html[data-uds-theme] .engine-evidence dl { margin: 8px 0 0; }
+
+html[data-uds-theme] .engine-evidence .ev-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 34%) 1fr;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px dashed color-mix(in srgb, var(--muted) 10%, transparent);
+}
+
+html[data-uds-theme] .engine-evidence dt {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+html[data-uds-theme] .engine-evidence dd {
+    margin: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+html[data-uds-theme] .engine-evidence .ev-value {
+    color: var(--text);
+    font-size: 11.5px;
+    overflow-wrap: anywhere;
+}
+
+html[data-uds-theme] .engine-evidence .ev-source {
+    color: color-mix(in srgb, var(--muted) 70%, transparent);
+    font-size: 10.5px;
+}
+
+@media (max-width: 520px) {
+    html[data-uds-theme] .engine-evidence .ev-row { grid-template-columns: 1fr; gap: 2px; }
+}
+
 html[data-uds-theme] .health-chip.neutral {
     color: var(--muted);
     background: var(--surface-2);
@@ -2160,6 +2239,10 @@ html[data-uds-theme] .build-badge.b-creamapi     { --badge-accent: #f6d365; }
 html[data-uds-theme] .build-badge.b-greenluma    { --badge-accent: #8ce99a; }
 html[data-uds-theme] .build-badge.b-platinum     { --badge-accent: #cfd8e3; }
 html[data-uds-theme] .build-badge.b-rehlds       { --badge-accent: var(--accent); }
+/* Scanner 1.0 engine verdicts: a Steam launcher running a non-Valve engine, and a client
+   that could not be attributed at all. Kept visually distinct from ordinary non-Steam. */
+html[data-uds-theme] .build-badge.b-review       { --badge-accent: var(--danger); }
+html[data-uds-theme] .build-badge.b-unverified   { --badge-accent: #8a94a6; }
 
 /* server cells + header hint */
 html[data-uds-theme] .bd-table .srv-name {
@@ -3980,6 +4063,16 @@ html[data-uds-theme] .uds-fb-link {
 }
 
 html[data-uds-theme] .uds-fb-link:hover { color: var(--accent); }
+
+/* Staff-only Cheats DB entry: deliberately easy to miss */
+html[data-uds-theme] .uds-fb-admin {
+    opacity: .3;
+    font-size: 9.5px;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+}
+
+html[data-uds-theme] .uds-fb-admin:hover { opacity: .85; }
 
 html[data-uds-theme] .uds-fb-divider {
     width: 1px;

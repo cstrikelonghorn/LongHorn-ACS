@@ -50,9 +50,9 @@ ACS fails closed: report uploads are **local-only** until you set a token.
 
 | Variable | Purpose |
 |---|---|
-| `ACP_API_TOKEN` | Upload + report-signing token. Shared with the desktop client. |
+| `ACP_API_TOKEN` | Scanner API access token. Assume desktop users can extract it; never reuse it for administration. |
 | `ACP_ADMIN_TOKEN` | Dashboard, `review.php`, and hash classification. **Separate** from the upload token. |
-| `ACP_REPORT_SECRET` | HMAC key for report integrity (defaults to `ACP_API_TOKEN`). |
+| `ACP_REPORT_SECRET` | HMAC payload-integrity key (defaults to `ACP_API_TOKEN`). This is not device attestation. |
 | `ACP_REQUIRE_REPORT_SIGNATURE` | `1` to reject unsigned/edited reports outright. |
 | `ACP_TELEMETRY_SECRET` | HMAC key for ReHLDS plugin telemetry. |
 | `ACP_CORPUS_FILE` | Corpus SQLite path (put **outside** the web root). |
@@ -60,6 +60,8 @@ ACS fails closed: report uploads are **local-only** until you set a token.
 | `ACP_REPORT_INDEX` | Report index SQLite path. |
 
 > `ACP_*` is still honoured for backwards compatibility; `ACS_*` is the current spelling and wins where both are set.
+
+Instead of environment variables, the values can live in a `.acs-secrets.php` file that returns an array (`apiToken`, `adminToken`, `reportSecret`, `telemetrySecret`, `publicDashboard`). It is read from `ACS_SECRETS_FILE`, else `<vhost>/private/.acs-secrets.php`, else `<vhost>/.acs-secrets.php`. On Hestia/Vesta use `private/`: PHP's `open_basedir` there cannot read the vhost root, and the site then silently runs with **no secrets** — uploads disabled and the dashboard public.
 
 ## Who can read a report
 

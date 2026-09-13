@@ -11,6 +11,11 @@ reports/*.json
 database/*.sqlite
 database/*.sqlite-*
 database/admin_audit.log
+database/api_token.txt
+database/admin_token.txt
+database/report_secret.txt
+database/telemetry_secret.txt
+database/release_hashes.json
 database/ip_geo.json
 database/visitor_stats.json
 database/visitor_online.json
@@ -26,8 +31,6 @@ publish-*/
 windows/bin/
 windows/obj/
 windows/publish/
-windows/publish-3.3/
-windows/publish-3.3 - Copy/
 windows/release/
 windows/launcher/
 tests/desktop/bin/

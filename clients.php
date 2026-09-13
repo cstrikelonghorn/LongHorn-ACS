@@ -82,6 +82,23 @@ function acs_client_surface(array $report): array
     return ['modules' => $modules, 'files' => $files];
 }
 
+/** Match profile markers as filenames/path segments, never as arbitrary substrings. */
+function acs_client_marker_matches(string $value, string $needle, bool $path): bool
+{
+    $value = strtolower(str_replace('\\', '/', trim($value)));
+    $needle = strtolower(str_replace('\\', '/', trim($needle)));
+    if ($value === '' || $needle === '') return false;
+    if (!$path) return basename($value) === basename($needle);
+    if (str_contains($needle, '/')) {
+        return $value === $needle || str_ends_with($value, '/' . ltrim($needle, '/'));
+    }
+    if (str_contains($needle, '.')) return basename($value) === $needle;
+    $basename = basename($value);
+    $stem = preg_replace('/\.[^.]+$/', '', $basename) ?: $basename;
+    return $stem === $needle || str_starts_with($stem, $needle . '_')
+        || in_array($needle, explode('/', trim($value, '/')), true);
+}
+
 /**
  * Identifies which known client a report came from.
  *
@@ -93,11 +110,8 @@ function acs_client_identify(array $report, array $config): ?array
 {
     $db      = acs_client_profiles($config);
     $surface = acs_client_surface($report);
-    $hashes  = array_values(array_filter(array_merge(
-        array_values($surface['modules']),
-        array_values($surface['files'])
-    )));
-
+    $engine  = is_array($report['engine'] ?? null) ? $report['engine'] : [];
+    $reportedFamily = strtolower(trim((string) ($engine['family'] ?? '')));
     $noSteam = true;
     foreach (array_keys($surface['modules']) as $name) {
         if ($name === 'steamclient.dll') { $noSteam = false; break; }
@@ -105,23 +119,32 @@ function acs_client_identify(array $report, array $config): ?array
 
     $best = null;
     foreach ($db['profiles'] as $profile) {
-        if (!is_array($profile)) continue;
+        if (!is_array($profile) || ($profile['enabled'] ?? true) === false) continue;
         $markers = is_array($profile['markers'] ?? null) ? $profile['markers'] : [];
         $matched = [];
+        $matchedHashes = [];
+
+        foreach ((array) ($markers['engineFamilies'] ?? []) as $family) {
+            if ($reportedFamily !== '' && $reportedFamily === strtolower(trim((string) $family))) {
+                $matched[] = 'engine:' . $reportedFamily;
+            }
+        }
 
         foreach ((array) ($markers['modules'] ?? []) as $needle) {
             $needle = strtolower((string) $needle);
-            foreach (array_keys($surface['modules']) as $name) {
-                if ($name === $needle || str_contains($name, $needle)) {
+            foreach ($surface['modules'] as $name => $hash) {
+                if (acs_client_marker_matches($name, $needle, false)) {
                     $matched[] = 'module:' . $name;
+                    if ($hash !== '') $matchedHashes[] = $hash;
                 }
             }
         }
         foreach ((array) ($markers['files'] ?? []) as $needle) {
             $needle = strtolower((string) $needle);
-            foreach (array_keys($surface['files']) as $rel) {
-                if (str_contains($rel, $needle)) {
+            foreach ($surface['files'] as $rel => $hash) {
+                if (acs_client_marker_matches($rel, $needle, true)) {
                     $matched[] = 'file:' . $rel;
+                    if ($hash !== '') $matchedHashes[] = $hash;
                 }
             }
         }
@@ -129,7 +152,10 @@ function acs_client_identify(array $report, array $config): ?array
         // The generic non-Steam profile matches on the absence of steamclient.dll. It is
         // only ever a fallback, so it must not win over a real client match.
         $isFallback = (bool) ($markers['noSteamBuild'] ?? false);
-        if ($isFallback && $noSteam && count($matched) === 0) {
+        $engineSaysNonSteam = !empty($engine['nonSteamDistribution'])
+            || (!empty($engine['family']) && empty($engine['steamVerified'])
+                && strtolower((string) ($engine['confidence'] ?? 'none')) !== 'none');
+        if ($isFallback && $noSteam && $engineSaysNonSteam && count($matched) === 0) {
             $matched[] = 'build:no-steam';
         }
 
@@ -139,7 +165,9 @@ function acs_client_identify(array $report, array $config): ?array
         }
 
         $known    = array_map('strtolower', (array) ($profile['knownHashes']['sha256'] ?? []));
-        $verified = count($known) > 0 && count(array_intersect($known, $hashes)) > 0;
+        // A profile is verified only when the hash belongs to the marker that identified it.
+        // An unrelated stock hw.dll elsewhere in the report must not verify a forged marker.
+        $verified = count($known) > 0 && count(array_intersect($known, $matchedHashes)) > 0;
 
         $candidate = [
             'id'         => (string) ($profile['id'] ?? ''),
@@ -148,6 +176,7 @@ function acs_client_identify(array $report, array $config): ?array
             'confidence' => (string) ($profile['confidence'] ?? 'inferred'),
             'verified'   => $verified,
             'fallback'   => $isFallback,
+            'priority'   => (int) ($profile['priority'] ?? 0),
             'matchedOn'  => array_values(array_unique($matched)),
             'profile'    => $profile,
         ];
@@ -155,8 +184,11 @@ function acs_client_identify(array $report, array $config): ?array
         // A specific client always beats the generic non-Steam fallback; among equals,
         // more marker matches wins.
         if ($best === null
-            || ($best['fallback'] && !$isFallback)
-            || (!$isFallback && count($candidate['matchedOn']) > count($best['matchedOn']))) {
+             || ($best['fallback'] && !$isFallback)
+             || ($candidate['verified'] && !$best['verified'])
+             || ($candidate['verified'] === $best['verified'] && $candidate['priority'] > $best['priority'])
+             || ($candidate['verified'] === $best['verified'] && $candidate['priority'] === $best['priority']
+                 && !$isFallback && count($candidate['matchedOn']) > count($best['matchedOn']))) {
             $best = $candidate;
         }
     }

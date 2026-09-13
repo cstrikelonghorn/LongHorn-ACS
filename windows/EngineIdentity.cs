@@ -52,7 +52,14 @@ public static class EngineIdentity
         string LauncherSigner,
         string SteamClientOrigin,
         IReadOnlyList<Fact> Evidence,
-        IReadOnlyList<EngineFinding> Findings);
+        IReadOnlyList<EngineFinding> Findings,
+        bool NonSteamDistribution,
+        string EngineCompiled,          // "Oct 7 2024 19:06:31", from the engine's "Exe build" string
+        int? EngineBuildNumber,         // what the engine prints as "Exe build: ... (N)"
+        string EngineBuildNumberSource,
+        string EngineVersion,           // "1.1.2.7/Stdio"
+        string EngineVersionSource,
+        string GameDirectory);
 
     /// <summary>
     /// Emulator families, matched against the module names, their load paths and the install
@@ -61,7 +68,7 @@ public static class EngineIdentity
     /// </summary>
     private static readonly (string Family, string Label, string[] Markers)[] Families =
     {
-        ("nextclient",    "NextClient",        new[] { "nextclient" }),
+        ("nextclient",    "NextClient",        new[] { "nextclient", "nitro_api", "next_engine", "next_lib", "filesystem_proxy" }),
         ("gsclient",      "GSClient",          new[] { "gsclient" }),
         ("goldclient",    "GoldClient",        new[] { "goldclient" }),
         ("esk",           "ESK Edition",       new[] { "counter-strike esk", "cs esk", "\\esk\\" }),
@@ -77,9 +84,28 @@ public static class EngineIdentity
         ("rehlds",        "ReHLDS / DProto",   new[] { "reunion_mm", "dproto", "regamedll", "swds.dll" })
     };
 
-    /// <summary>The engine's __DATE__ stamp, e.g. "Nov 11 2016".</summary>
-    private static readonly Regex BuildStamp = new(
-        @"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}(\d{1,2}) (\d{4})\b",
+    private const string MonthPattern = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)";
+
+    /// <summary>
+    /// The engine's own version-output format string, compiled as
+    /// <c>"Exe build: " __BUILD_TIME__ " " __BUILD_DATE__ " (%i)\n"</c> (engine/host.cpp).
+    /// Its time and date are the exact moment the engine was compiled.
+    /// </summary>
+    private static readonly Regex ExeBuildString = new(
+        @"Exe build: (\d\d:\d\d:\d\d) (" + MonthPattern + @" [ \d]\d \d{4}) \(%i\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// The date build_number() reads: <c>static char *date = __BUILD_DATE__</c> in
+    /// engine/buildnum.cpp. The compiler places it directly in front of that file's month-name
+    /// table (<c>mon[12] = { "Jan", "Feb", ... }</c>), so it is the date followed by
+    /// "\0Jan\0Feb\0Mar\0" - in both engines checked. What comes before it varies (a NUL in the
+    /// Steam engine, the days-per-month table in ESK's), so only the table after it is matched.
+    /// It is compiled separately from host.cpp and can carry an earlier date: the ESK engine was
+    /// compiled Jun 15 2009, but its build number comes from "Apr 13 2009" - build 4554.
+    /// </summary>
+    private static readonly Regex StandaloneDate = new(
+        @"(" + MonthPattern + @" [ \d]\d \d{4})\x00Jan\x00Feb\x00Mar\x00",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -87,7 +113,7 @@ public static class EngineIdentity
     /// or inferred from the machine at large: if a fact is not present in this process, it is
     /// reported as absent rather than filled in from somewhere else.
     /// </summary>
-    public static Result Inspect(string hlPath, string gameRoot, List<Dictionary<string, object?>> modules)
+    public static Result Inspect(string hlPath, string gameRoot, List<Dictionary<string, object?>> modules, string liveVersion = "")
     {
         var evidence = new List<Fact>();
         var findings = new List<EngineFinding>();
@@ -95,7 +121,7 @@ public static class EngineIdentity
         // The launcher is matched by PATH, not by name: "the module called hl.exe" is
         // whatever a cheat chose to call itself, while the path is the one the OS reports
         // for the process being scanned.
-        var launcher = ByPath(modules, hlPath) ?? ByName(modules, "hl.exe", "cstrike.exe", "cs.exe");
+        var launcher = ByPath(modules, hlPath);
         var engine = InGameRoot(modules, gameRoot, "hw.dll", "sw.dll", "swds.dll");
         var clientDll = InGameRoot(modules, gameRoot, "client.dll");
         var steamClient = ByName(modules, "steamclient.dll");
@@ -123,19 +149,31 @@ public static class EngineIdentity
         var enginePath = Str(engine, "path");
         var engineSha = Str(engine, "sha256");
         var engineVersion = Str(engine, "fileVersion");
-        var engineCompany = Str(engine, "company");
-        var buildDate = enginePath == "" ? "" : ReadBuildStamp(enginePath);
+        var engineSigned = Flag(engine, "signatureValid");
+        var engineSigner = Str(engine, "signer");
+        var build = enginePath == "" ? EngineBuild.None : ReadEngineBuild(enginePath);
+
+        // Version: the live string the engine holds in memory when it could be read, otherwise
+        // the steam.inf the engine reads it from, in the game directory the client runs.
+        var gameDirectory = GameDirectoryOf(Str(clientDll, "path"), gameRoot);
+        var (patchVersion, _, versionFile) = ReadVersionFile(gameRoot, gameDirectory);
+        var engineVersionString = liveVersion != "" ? liveVersion : patchVersion;
+        var engineVersionSource = liveVersion != "" ? "live engine memory" : versionFile;
 
         if (engine is not null)
         {
             evidence.Add(new Fact("Engine module", $"{engineName} — {enginePath}", "loaded module list"));
+            evidence.Add(new Fact("Engine signature",
+                engineSigned
+                    ? $"valid — {Or(engineSigner, "unnamed signer")}"
+                    : Str(engine, "signatureStatus") == "modified"
+                        ? $"{Or(engineSigner, "publisher")} certificate present, but the file was modified after signing"
+                        : "not signed / not verifiable",
+                "Authenticode (WinVerifyTrust)"));
             evidence.Add(new Fact("Engine SHA-256", Or(engineSha, "unreadable"), "file on disk"));
-            evidence.Add(new Fact("Engine build stamp", Or(buildDate, "no build stamp found"), $"{engineName} binary"));
-            evidence.Add(new Fact("Engine version resource",
-                engineVersion == "" && engineCompany == ""
-                    ? "none — binary carries no version resource"
-                    : $"{Or(engineCompany, "no company")} · {Or(engineVersion, "no version")}",
-                "PE version resource"));
+            evidence.Add(new Fact("Engine compiled", Or(build.Compiled, "no build string found"), $"{engineName} \"Exe build\" string"));
+            evidence.Add(new Fact("Engine build number", build.Number?.ToString() ?? "not determined", build.NumberSource));
+            evidence.Add(new Fact("Engine version", Or(engineVersionString, "not found"), Or(engineVersionSource, "steam.inf not found")));
         }
         else
         {
@@ -147,8 +185,13 @@ public static class EngineIdentity
         // ships its own copy next to the game.
         var steamClientPath = Str(steamClient, "path");
         var steamClientInGame = steamClientPath != "" && IsUnder(steamClientPath, gameRoot);
+        // steam_api.dll is different: retail Steam ships it next to the game too (checked -
+        // Half-Life's copy sits in the game folder, Valve-signed). What an emulator does is
+        // replace it. So its location proves nothing and its signature is the test.
         var steamApiPath = Str(steamApi, "path");
-        var steamApiInGame = steamApiPath != "" && IsUnder(steamApiPath, gameRoot);
+        var steamApiName = Str(steamApi, "name", "steam_api.dll");
+        var steamApiValve = Flag(steamApi, "signatureValid") && IsValveSigner(Str(steamApi, "signer"));
+        var steamApiInGame = steamApiPath != "" && IsUnder(steamApiPath, gameRoot) && !steamApiValve;
         var steamClientOrigin = steamClientPath == ""
             ? "not loaded"
             : steamClientInGame ? "game folder (emulator)" : "Steam installation";
@@ -159,8 +202,9 @@ public static class EngineIdentity
         }
         if (steamApiPath != "")
         {
-            evidence.Add(new Fact("steam_api.dll origin",
-                $"{(steamApiInGame ? "game folder" : "outside game folder")} — {steamApiPath}", "loaded module list"));
+            evidence.Add(new Fact(steamApiName,
+                (steamApiValve ? "Valve-signed" : "not Valve-signed (replaced)") + $" — {steamApiPath}",
+                "Authenticode (WinVerifyTrust)"));
         }
 
         // A steam_appid.txt next to the game is an emulator convention; retail Steam does
@@ -172,24 +216,42 @@ public static class EngineIdentity
         }
 
         // ── The verdict ──────────────────────────────────────────────────────
-        // Genuine Steam has to be proven, not assumed. Two things must hold: Windows can
-        // verify the launcher's signature and it is Valve's, and nothing is loading Steam
-        // out of the game folder. Anything short of that is reported as non-Steam.
-        var surface = BuildSurface(modules, gameRoot, hlPath);
-        var (family, label) = MatchFamily(surface);
+        // Genuine Steam has to be proven, not assumed, and the proof is the signature - not
+        // the version resource. Checked against a real install: Steam's hl.exe and hw.dll are
+        // both Authenticode-signed by Valve Corp., while the ESK client's hl.exe carries a
+        // byte-for-byte copy of the genuine version text ("Valve · Steam Half-Life Launcher ·
+        // 1, 1, 1, 1") and no signature at all. Text can be copied; a signature that Windows
+        // validates to a trusted root cannot.
+        //
+        // So three things must hold: the launcher is Valve-signed, the engine is Valve-signed,
+        // and nothing loads Steam out of the game folder. The engine is required as well as the
+        // launcher because a genuine signed hl.exe in front of a patched hw.dll is exactly how
+        // a modified engine would try to pass as retail.
+        var (family, label) = MatchFamily(modules, gameRoot, hlPath);
 
         string distribution;
         string confidence;
         bool steamVerified;
 
-        var valveSigned = launcherSigned && launcherSigner.Contains("Valve", StringComparison.OrdinalIgnoreCase);
+        var launcherValve = launcherSigned && IsValveSigner(launcherSigner);
+        var engineValve = engineSigned && IsValveSigner(engineSigner);
         var emulatorPresent = steamClientInGame || steamApiInGame || family != "";
 
-        if (valveSigned && !emulatorPresent)
+        if (launcherValve && engineValve && !emulatorPresent)
         {
             distribution = "Steam (retail)";
             confidence = "verified";
             steamVerified = true;
+        }
+        else if (launcherValve && !emulatorPresent)
+        {
+            // A real Steam launcher, but the engine behind it is not Valve's. Not called
+            // non-Steam - the install is Steam - and not called retail either.
+            distribution = engine is null
+                ? "Steam — engine module not found"
+                : "Steam — engine binary is not Valve-signed";
+            confidence = "review";
+            steamVerified = false;
         }
         else if (family != "")
         {
@@ -212,45 +274,41 @@ public static class EngineIdentity
             steamVerified = false;
         }
 
-        var trust = valveSigned ? "valve-signed"
+        var trust = launcherValve && engineValve ? "valve-signed"
             : engineSha == "" ? "unknown"
             : "unverified";
 
         var gameBuild = "Counter-Strike 1.6 — " + distribution;
-        if (buildDate != "")
+        if (engineVersionString != "")
         {
-            gameBuild += $" · engine {buildDate}";
+            gameBuild += $" · v{engineVersionString}";
+        }
+        if (build.Number is not null)
+        {
+            gameBuild += $" · build {build.Number}";
         }
 
         evidence.Add(new Fact("Distribution verdict", $"{distribution} ({confidence})",
-            valveSigned ? "Valve Authenticode signature" : "module origin and emulator markers"));
+            launcherValve ? "Valve Authenticode signature" : "module origin and emulator markers"));
 
         // ── Findings ─────────────────────────────────────────────────────────
-        // Informational by design. Running a non-Steam client is not evidence of cheating
-        // and must not push a scan toward SUSPICIOUS on its own - what matters is that the
-        // report states plainly what was found instead of labelling it Steam.
-        if (!steamVerified)
+        // Running a non-Steam client is whitelisted: it is not evidence of cheating and is not
+        // raised for review. The identity is still recorded in full - distribution, signatures
+        // and evidence - in the report's engine block, not as a finding.
+        //
+        // The exception is a contradiction inside a Steam install: Valve's launcher running
+        // an engine Valve did not sign. There is no legitimate reason for that combination -
+        // Steam verifies and replaces game files - so it is raised for review.
+        if (launcherValve && !emulatorPresent && engine is not null && !engineValve)
         {
             findings.Add(new EngineFinding(
-                "acs-client-distribution",
-                "Non-Steam Counter-Strike client",
-                "INFO",
-                Or(enginePath, hlPath),
-                $"The client was identified as {distribution}. " +
-                (steamClientInGame
-                    ? "steamclient.dll is loaded from the game folder rather than from a Steam installation, which is how Steam emulators work. "
-                    : "") +
-                "This is not evidence of cheating - many Counter-Strike 1.6 players run a non-Steam client - but the engine binary cannot be attributed to Valve, so module integrity is judged against the client profile rather than against a retail build."));
-        }
-
-        if (engine is not null && engineVersion == "" && engineCompany == "")
-        {
-            findings.Add(new EngineFinding(
-                "acs-engine-no-version-resource",
-                "Engine binary carries no version resource",
-                "INFO",
+                "acs-engine-replaced-in-steam-install",
+                "Engine binary replaced in a Steam install",
+                "WARNING",
                 enginePath,
-                $"{engineName} has no company or version information compiled into it. Valve's engine binaries always carry one, so this file has been rebuilt or repacked. Expected for a modified client; recorded here so the build is identified by hash instead."));
+                $"hl.exe is genuinely signed by Valve, but {engineName} is " +
+                (engineSigned ? $"signed by '{Or(engineSigner, "an unnamed signer")}', not Valve" : "not signed") +
+                ". A retail Steam install ships a Valve-signed engine and Steam restores it on verification, so this file was replaced after install. A modified engine can hide aim, wallhack or speed patches from checks that trust the launcher. Compare the SHA-256 against the retail build."));
         }
 
         if (engine is null)
@@ -265,85 +323,238 @@ public static class EngineIdentity
 
         return new Result(
             distribution, family, steamVerified, confidence, trust, gameBuild,
-            engineName, buildDate, engineVersion, engineSha,
+            engineName, build.Compiled, engineVersion, engineSha,
             launcherSha, launcherSigned, launcherSigner, steamClientOrigin,
-            evidence, findings);
+            evidence, findings,
+            // A non-Steam edition was positively identified: a named family, or Steam being
+            // loaded out of the game folder. What that explains - an engine patched to run
+            // without Steam - is decided by the caller, not assumed here.
+            !steamVerified && emulatorPresent,
+            build.Compiled, build.Number, build.NumberSource,
+            engineVersionString, engineVersionSource, gameDirectory);
     }
 
     /// <summary>
-    /// Pulls the compiler's __DATE__ stamp out of the engine binary.
-    ///
-    /// GoldSrc has no version number worth the name - retail hw.dll reports 1.0.0.1 and has
-    /// for twenty years - but every build carries the date it was compiled, and that is what
-    /// the engine prints for "Exe build". Several dates can appear in a binary (third-party
-    /// code carries its own), so the latest is taken: the engine is linked last.
+    /// Whether a certificate subject names Valve. Exact names only: a substring test would
+    /// accept any certificate a stranger chose to call "Not Valve". This is meaningful only
+    /// alongside a signature Windows has validated - the name on its own proves nothing.
     /// </summary>
-    private static string ReadBuildStamp(string path)
+    private static bool IsValveSigner(string signer)
+    {
+        return signer.Trim() is var s
+               && (s.Equals("Valve Corp.", StringComparison.OrdinalIgnoreCase)
+                   || s.Equals("Valve Corporation", StringComparison.OrdinalIgnoreCase)
+                   || s.Equals("Valve", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed record EngineBuild(string Compiled, int? Number, string NumberSource)
+    {
+        public static readonly EngineBuild None = new("", null, "engine module not found");
+    }
+
+    /// <summary>
+    /// The engine's compile time and build number, exactly as the engine reports them.
+    ///
+    /// GoldSrc prints "Exe build: HH:MM:SS Mon DD YYYY (N)". The time and date are literals in
+    /// that format string. N is computed at runtime by build_number() from a separate date
+    /// literal, with the formula ported below verbatim. Both are read from the file itself; the
+    /// earlier "latest date anywhere in the binary" guess happened to give the right day for
+    /// the two engines checked but gave no time and no build number.
+    /// </summary>
+    private static EngineBuild ReadEngineBuild(string path)
     {
         try
         {
             var info = new FileInfo(path);
             if (!info.Exists || info.Length <= 0 || info.Length > 64L * 1024 * 1024)
             {
-                return "";
+                return new EngineBuild("", null, "engine file unreadable");
             }
 
-            var bytes = File.ReadAllBytes(path);
-            var text = Encoding.ASCII.GetString(bytes);
+            // Latin-1 maps every byte to one character, so NUL terminators survive for the regexes.
+            var text = Encoding.Latin1.GetString(File.ReadAllBytes(path));
 
-            DateTime? best = null;
-            var bestText = "";
-            foreach (Match match in BuildStamp.Matches(text))
+            var exe = ExeBuildString.Match(text);
+            var compiled = exe.Success ? $"{NormalizeDate(exe.Groups[2].Value)} {exe.Groups[1].Value}" : "";
+
+            var standalone = StandaloneDate.Matches(text)
+                .Select(m => m.Groups[1].Value)
+                .Where(IsPlausibleDate)
+                .Distinct()
+                .ToList();
+
+            if (standalone.Count == 1)
             {
-                if (!DateTime.TryParseExact(
-                        $"{match.Groups[1].Value} {match.Groups[2].Value} {match.Groups[3].Value}",
-                        new[] { "MMM d yyyy", "MMM dd yyyy" },
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None,
-                        out var parsed))
-                {
-                    continue;
-                }
-
-                // Half-Life shipped in 1998; a stamp in the future is not a build date.
-                if (parsed.Year < 1998 || parsed > DateTime.UtcNow.AddDays(2))
-                {
-                    continue;
-                }
-
-                if (best is null || parsed > best)
-                {
-                    best = parsed;
-                    bestText = match.Value;
-                }
+                return new EngineBuild(compiled, BuildNumber(standalone[0]),
+                    $"engine build_number() over its build date literal \"{NormalizeDate(standalone[0])}\"");
             }
-
-            return bestText;
+            if (standalone.Count == 0 && exe.Success)
+            {
+                return new EngineBuild(compiled, BuildNumber(exe.Groups[2].Value),
+                    "engine build_number() over the compile date (no separate build date literal)");
+            }
+            return new EngineBuild(compiled, null,
+                standalone.Count == 0 ? "no build date found in the engine" : "several build date literals in the engine; not determined");
         }
         catch
         {
-            return "";   // an unreadable engine is reported as absent, never as a default
+            return new EngineBuild("", null, "engine file unreadable");   // never a default value
         }
     }
 
-    private static string BuildSurface(List<Dictionary<string, object?>> modules, string gameRoot, string hlPath)
+    /// <summary>
+    /// GoldSrc's build_number(), ported line for line from engine/buildnum.cpp. The input is
+    /// the raw 11-character __DATE__ form, "Mmm dd yyyy", where a one-digit day is space-padded.
+    /// </summary>
+    public static int BuildNumber(string date)
     {
-        var sb = new StringBuilder();
-        sb.Append(gameRoot).Append(' ').Append(hlPath).Append(' ');
+        string[] mon = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+        int[] mond = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+
+        int m, d = 0;
+        for (m = 0; m < 11; m++)
+        {
+            if (string.Compare(date, 0, mon[m], 0, 3, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                break;
+            }
+            d += mond[m];
+        }
+
+        d += Atoi(date, 4) - 1;
+        var y = Atoi(date, 7) - 1900;
+        var b = d + (int)((y - 1) * 365.25);
+        if (y % 4 == 0 && m > 1)
+        {
+            b += 1;
+        }
+        return b - 34995;   // days since Oct 24 1996
+    }
+
+    /// <summary>C's atoi from an offset: skip leading whitespace, read digits, stop at the first non-digit.</summary>
+    private static int Atoi(string text, int offset)
+    {
+        var i = offset;
+        while (i < text.Length && char.IsWhiteSpace(text[i]))
+        {
+            i++;
+        }
+        var value = 0;
+        while (i < text.Length && text[i] is >= '0' and <= '9')
+        {
+            value = value * 10 + (text[i] - '0');
+            i++;
+        }
+        return value;
+    }
+
+    private static string NormalizeDate(string date) => Regex.Replace(date, " {2,}", " ");
+
+    private static bool IsPlausibleDate(string date)
+    {
+        return DateTime.TryParseExact(NormalizeDate(date), "MMM d yyyy",
+                   System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed)
+               && parsed.Year >= 1998 && parsed <= DateTime.UtcNow.AddDays(2);
+    }
+
+    /// <summary>The game directory the client runs, taken from where its client.dll was loaded.</summary>
+    public static string GameDirectoryOf(string clientDllPath, string gameRoot)
+    {
+        try
+        {
+            // <root>\<gamedir>\cl_dlls\client.dll
+            var clDlls = Path.GetDirectoryName(clientDllPath);
+            var gameDir = clDlls is null ? null : Path.GetDirectoryName(clDlls);
+            if (gameDir is not null && IsUnder(gameDir + Path.DirectorySeparatorChar, gameRoot))
+            {
+                return Path.GetFileName(gameDir);
+            }
+        }
+        catch
+        {
+            // fall through
+        }
+        return "";
+    }
+
+    /// <summary>
+    /// PatchVersion and ProductName from steam.inf, looked up the way the engine's file system
+    /// finds it: the game directory first, then valve.
+    /// </summary>
+    public static (string PatchVersion, string Product, string Source) ReadVersionFile(string gameRoot, string gameDirectory)
+    {
+        foreach (var dir in new[] { gameDirectory, "valve" }.Where(d => !string.IsNullOrWhiteSpace(d)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var file = SafeCombine(Path.Combine(gameRoot, dir), "steam.inf");
+            if (file == "" || !File.Exists(file))
+            {
+                continue;
+            }
+            try
+            {
+                string patch = "", product = "";
+                foreach (var line in File.ReadLines(file).Take(50))
+                {
+                    var trimmed = line.Trim();
+                    if (trimmed.StartsWith("PatchVersion=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        patch = trimmed["PatchVersion=".Length..].Trim();
+                    }
+                    else if (trimmed.StartsWith("ProductName=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        product = trimmed["ProductName=".Length..].Trim();
+                    }
+                }
+                if (patch != "")
+                {
+                    return (patch, product, dir + "/steam.inf");
+                }
+            }
+            catch
+            {
+                // unreadable: try the next directory
+            }
+        }
+        return ("", "", "");
+    }
+
+    private static bool HasFamilyMarker(List<Dictionary<string, object?>> modules, string gameRoot, string hlPath, string marker)
+    {
+        var normalizedMarker = marker.Replace('\\', '/').Trim('/').ToLowerInvariant();
+        if (normalizedMarker == "") return false;
+        var values = new List<string> { gameRoot, hlPath };
         foreach (var module in modules)
         {
-            sb.Append(Str(module, "name")).Append(' ').Append(Str(module, "path")).Append(' ');
+            values.Add(Str(module, "name"));
+            values.Add(Str(module, "path"));
         }
-        return sb.ToString().ToLowerInvariant();
+        foreach (var raw in values)
+        {
+            var value = raw.Replace('\\', '/').Trim('/').ToLowerInvariant();
+            if (value == "") continue;
+            var parts = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var file = parts.LastOrDefault() ?? "";
+            var stem = Path.GetFileNameWithoutExtension(file);
+            if (normalizedMarker.Contains('.'))
+            {
+                if (file == normalizedMarker) return true;
+            }
+            else if (parts.Contains(normalizedMarker, StringComparer.Ordinal)
+                || stem == normalizedMarker || stem.StartsWith(normalizedMarker + "_", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
-    private static (string Family, string Label) MatchFamily(string surface)
+    private static (string Family, string Label) MatchFamily(List<Dictionary<string, object?>> modules, string gameRoot, string hlPath)
     {
         foreach (var (family, label, markers) in Families)
         {
             foreach (var marker in markers)
             {
-                if (surface.Contains(marker, StringComparison.Ordinal))
+                if (HasFamilyMarker(modules, gameRoot, hlPath, marker))
                 {
                     return (family, label);
                 }
@@ -375,9 +586,8 @@ public static class EngineIdentity
     private static Dictionary<string, object?>? InGameRoot(List<Dictionary<string, object?>> modules, string gameRoot, params string[] names)
     {
         return modules.FirstOrDefault(m =>
-                   names.Any(n => string.Equals(Str(m, "name"), n, StringComparison.OrdinalIgnoreCase))
-                   && IsUnder(Str(m, "path"), gameRoot))
-               ?? ByName(modules, names);
+            names.Any(n => string.Equals(Str(m, "name"), n, StringComparison.OrdinalIgnoreCase))
+            && IsUnder(Str(m, "path"), gameRoot));
     }
 
     // ── Small helpers ────────────────────────────────────────────────────────

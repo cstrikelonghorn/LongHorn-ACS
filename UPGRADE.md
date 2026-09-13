@@ -1,10 +1,10 @@
-# ACS 3.2 upgrade
+# ACS 1.0.0
 
 The desktop app has a graphite and amber Counter-Strike-inspired interface, an animated activity radar, numbered scan panels, measured elapsed time, cancellation, and clearer evidence labels. At the user's request, the web dashboard retains its original styling and layout; the added operations theme, hero, and coverage cards were removed. Scanner and reporting fixes remain in place.
 
 ## Running this build
 
-Run `windows/release/ACPScanner.exe` (or extract `windows/ACPScanner.zip`). Keep `ACPScanner.exe`, `acp-settings.json`, and `Assets/` together in the folder. Configure `acp-settings.json` with your server API endpoint URL (`http://127.0.0.1:8000/api.php` for local testing). HTTPS is required for public servers.
+Run `windows/release/ACPScanner.exe` — the whole app is that one file (`dotnet publish windows/ACPScanner.csproj -c Release` writes it there). It contains no server address: put `acp-settings.json` with your server API endpoint URL (`http://127.0.0.1:8000/api.php` for local testing) next to the exe or in `%APPDATA%\LongHorn ACS\`. HTTPS is required for public servers.
 
 Serve this directory with your existing PHP deployment. Local preview: `http://127.0.0.1:8000/index.php`. No production deployment was performed.
 

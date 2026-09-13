@@ -27,7 +27,7 @@ ACS (Anti-Cheat Scanner) is an anti-cheat **evidence** suite for Counter-Strike 
 ## How it works
 
 1. **Scan.** With Counter-Strike running, the desktop app reads the live game process: loaded modules, memory regions, hooks, files, drivers and configuration.
-2. **Upload.** The findings are packed into a report and cryptographically signed (HMAC-SHA256) so it cannot be edited or swapped in transit.
+2. **Upload.** The findings are packed into a report with an HMAC-SHA256 integrity check. This detects a changed payload but is not device attestation; the player controls their own client.
 3. **Review.** The dashboard stores the report, classifies each artifact, and presents a clear verdict with confirmed detections separated from lower-confidence review items.
 
 > **Evidence, not a verdict.** A report is a set of observations. Bans are always a human decision made by the server operator.
@@ -69,7 +69,7 @@ ACS (Anti-Cheat Scanner) is an anti-cheat **evidence** suite for Counter-Strike 
 2. **Report.** Open a scan to see the verdict, the Basic Data panel, confirmed detections and review evidence.
 3. **Evidence.** Each detection opens a forensic drawer with the engine rule, hook target, disassembly/byte difference and timestamp.
 4. **History.** Previous scans for the same player and their server connection history are shown on the report.
-5. **Share.** Admins can copy a single-report share link to hand to a player without exposing any other scan.
+5. **Share.** Players copy their report link from the app's **View Evidence** window and send it to an admin, who opens it with their own access.
 6. **Compare / Export.** Compare two reports side by side, or export a clean PDF for records.
 
 ## How safe is it?
@@ -88,10 +88,10 @@ Full details: [Privacy Policy](../privacy.php) and [Terms of Use](../terms.php).
 <details>
 <summary><b>Run your first scan</b></summary>
 
-1. Open `windows/acp-settings.json` and set `apiUrl` and `apiToken`.
+1. Put an `acp-settings.json` with `apiUrl` and `apiToken` next to `ACPScanner.exe`, or in `%APPDATA%\LongHorn ACS\`.
 2. Start Counter-Strike 1.6 and join any server (or the main menu).
 3. Launch the scanner and press Scan. Keep the game focused while the live-behaviour stage runs.
-4. When it finishes, the app confirms the upload and shows the report link.
+4. When it finishes, the report uploads automatically and the link opens.
 </details>
 
 <details>
@@ -106,9 +106,9 @@ Full details: [Privacy Policy](../privacy.php) and [Terms of Use](../terms.php).
 <details>
 <summary><b>Share a clean scan with an admin</b></summary>
 
-1. Open your report page and copy the **Share this report** link.
-2. Send that link to the admin. It opens only that one report.
-3. The link carries a key derived from the report id, so no other scan is reachable through it.
+1. When the scan finishes, open **View Evidence** in the app and click the report link to copy it.
+2. Send that link to the server admin.
+3. Admins open reports with their own access, so the link does not expose the report to anyone else.
 </details>
 
 <details>

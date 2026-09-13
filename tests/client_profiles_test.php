@@ -20,7 +20,7 @@ putenv('ACS_TELEMETRY_SECRET=t');
 putenv('ACP_BEHAVIOR_FILE=' . sys_get_temp_dir() . '/clients_test.sqlite');
 @unlink(sys_get_temp_dir() . '/clients_test.sqlite');
 
-require getenv('ACPDIR') . '/config.php';
+require (getenv('ACPDIR') ?: dirname(__DIR__)) . '/config.php';
 
 $pass = 0; $fail = 0;
 function ok(string $what, bool $cond, string $extra = ''): void {
@@ -122,6 +122,7 @@ echo "\nOTHER CLIENTS\n";
 $repack = [
     'modules' => [mod('hw.dll'), mod('client.dll'), mod('podbot_mm.dll')],
     'hlFiles' => [],
+    'engine' => ['family' => 'rehlds', 'confidence' => 'marker', 'steamVerified' => false],
     'findings' => [
         finding('acs-foreign-module', 'WARNING', 'podbot_mm.dll — C:\\cs\\cstrike\\addons\\podbot\\podbot_mm.dll'),
         finding('acs-cheat-named-module', 'DETECTED', 'C:\\cs\\wallhack.dll'),
@@ -137,6 +138,17 @@ ok('a cheat in a repack is still DETECTED', sev($r, 'acs-cheat-named-module') ==
 $r = ['modules' => [mod('hw.dll'), mod('gsclient.dll')], 'hlFiles' => [], 'findings' => []];
 $c4 = acs_client_apply($r, $acpConfig);
 ok('a specific client beats the non-Steam fallback', ($c4['id'] ?? '') === 'gsclient', $c4['id'] ?? '-');
+
+$r = ['modules' => [mod('notgsclient.dll')], 'hlFiles' => [], 'findings' => []];
+$fake = acs_client_apply($r, $acpConfig);
+ok('client marker substrings do not impersonate a profile', ($fake['recognised'] ?? true) === false);
+
+$r = ['modules' => [mod('hw.dll')], 'hlFiles' => [],
+    'engine' => ['family' => 'esk', 'confidence' => 'marker', 'steamVerified' => false],
+    'findings' => [finding('acp-local-steamclient', 'DETECTED', 'steamclient.dll')]];
+$esk = acs_client_apply($r, $acpConfig);
+ok('ESK engine identity selects the dedicated compatibility profile', ($esk['id'] ?? '') === 'esk');
+ok('ESK compatibility is claimed and stops at WARNING', sev($r, 'acp-local-steamclient') === 'WARNING');
 
 // Retail Steam install with no client mod: nothing should be claimed.
 $r = ['modules' => [mod('hw.dll'), mod('client.dll'), mod('steamclient.dll')], 'hlFiles' => [], 'findings' => [
@@ -242,6 +254,7 @@ ok('a cheat in a folder named after a whitelisted plugin is not excused',
 $r = [
     'modules' => [mod('hw.dll'), mod('podbot_mm.dll')],
     'hlFiles' => [],
+    'engine' => ['family' => 'rehlds', 'confidence' => 'marker', 'steamVerified' => false],
     'findings' => [finding('acp-foreign-module', 'DETECTED', 'podbot_mm.dll — C:\\cs\\cstrike\\addons\\podbot\\podbot_mm.dll')],
 ];
 acs_client_apply($r, $acpConfig);
@@ -260,7 +273,30 @@ $r = [
 $c = acs_client_apply($r, $acpConfig);
 ok('a patched module the client explains is annotated',
    isset($r['moduleIntegrity'][0]['explainedBy']), 'integrityExplained=' . ($c['integrityExplained'] ?? 0));
-ok('a clean module is left alone', !isset($r['moduleIntegrity'][1]['explainedBy']));
+// NextClient with new modules (next_engine_mini, next_lib, FileSystem_Proxy, nitro_api2)
+$nextclient_new = [
+    'modules' => [
+        mod('hw.dll'),
+        mod('client.dll'),
+        mod('nitro_api2.dll', 'edbefdd9a66b71b0b0c2abb7472ab5ba0d0fca241653891bcb08d8ace532d3a9'),
+        mod('next_engine_mini.dll'),
+        mod('next_lib.dll'),
+        mod('FileSystem_Proxy.dll'),
+    ],
+    'hlFiles' => [],
+    'findings' => [
+        finding('acp-foreign-module', 'WARNING', 'next_engine_mini.dll — C:\\cs\\next_engine_mini.dll'),
+        finding('acp-foreign-module', 'WARNING', 'next_lib.dll — C:\\cs\\next_lib.dll'),
+        finding('acp-foreign-module', 'WARNING', 'FileSystem_Proxy.dll — C:\\cs\\FileSystem_Proxy.dll'),
+        finding('acp-foreign-module', 'WARNING', 'nitro_api2.dll — C:\\cs\\nitro_api2.dll'),
+    ],
+];
+$r = $nextclient_new;
+$c = acs_client_apply($r, $acpConfig);
+ok('NextClient recognised via nitro_api2 / next_engine_mini', ($c['recognised'] ?? false) && $c['id'] === 'nextclient', $c['id'] ?? '-');
+ok('NextClient verified via populated legitimate hash', ($c['verified'] ?? false) === true);
+ok('next_engine_mini is explained down to INFO', sev($r, 'next_engine_mini.dll') === '(absent)' || $r['findings'][0]['severity'] === 'INFO', $r['findings'][0]['severity'] ?? '');
+ok('FileSystem_Proxy is explained down to INFO', $r['findings'][2]['severity'] === 'INFO', $r['findings'][2]['severity'] ?? '');
 
 printf("\n%d passed, %d failed\n\n", $pass, $fail);
 exit($fail ? 1 : 0);

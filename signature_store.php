@@ -308,13 +308,22 @@ function uds_signature_store_test_input(array $rules, string $input): array
             }
         }
 
-        // Test hash keys (SHA-256, MD5)
+        // Test hash keys (SHA-256, MD5). A full digest matches exactly; a truncated digest
+        // (the 4-byte MD5s server ban databases publish) matches as a prefix, mirroring the
+        // desktop engine so the admin rule tester agrees with what a real scan will do.
         if ($matchedBy === '') {
-            foreach (['sha256', 'md5'] as $key) {
+            $isHashInput = preg_match('/^[a-f0-9]{8,64}$/', $inputLower) === 1;
+            foreach (['sha256', 'md5', 'sha1'] as $key) {
                 if (isset($match[$key])) {
                     $hashes = is_array($match[$key]) ? $match[$key] : [$match[$key]];
                     foreach ($hashes as $hash) {
-                        if (strcasecmp($inputLower, strtolower((string) $hash)) === 0) {
+                        $candidate = strtolower((string) $hash);
+                        $length = strlen($candidate);
+                        if ($length < 8 || !ctype_xdigit($candidate)) {
+                            continue;
+                        }
+                        if (strcasecmp($inputLower, $candidate) === 0
+                            || ($isHashInput && $length <= strlen($inputLower) && str_starts_with($inputLower, $candidate))) {
                             $matchedBy = $key . ' hash';
                             break 2;
                         }
