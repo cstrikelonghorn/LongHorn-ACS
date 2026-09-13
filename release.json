@@ -1,0 +1,12 @@
+{
+  "version": "3.3.1-beta.1",
+  "tag": "v3.3.1-beta.1",
+  "repository": "cstrikelonghorn/LongHorn-ACS",
+  "asset": "ACS-Scanner-3.3.1-beta.1-win-x64.zip",
+  "sha256": "c355bc00fd6c92bb06a3cc35188d3db24a07f886513180654da138fb772060c4",
+  "sizeBytes": 53067358,
+  "publisherSigning": "not-signed",
+  "independentAudit": "not-performed",
+  "antivirusAnalysis": "not-verified",
+  "preparedAt": "2026-09-13T03:31:22.444129+00:00"
+}

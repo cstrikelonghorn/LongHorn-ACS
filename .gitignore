@@ -1,0 +1,7 @@
+*.exe
+*.dll
+*.pdb
+*.zip
+*.sqlite*
+.env*
+acp-settings.json

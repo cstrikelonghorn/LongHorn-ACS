@@ -1,0 +1,17 @@
+{
+  "scope": "Dependency inventory derived from .NET publish output; not an independent vulnerability scan",
+  "libraries": [
+    {
+      "name": "ACPScanner/3.3.1-beta.1",
+      "type": "project"
+    },
+    {
+      "name": "runtimepack.Microsoft.NETCore.App.Runtime.win-x64/10.0.5",
+      "type": "runtimepack"
+    },
+    {
+      "name": "runtimepack.Microsoft.WindowsDesktop.App.Runtime.win-x64/10.0.5",
+      "type": "runtimepack"
+    }
+  ]
+}
