@@ -87,10 +87,15 @@ $vtApiKey = acs_env('VIRUSTOTAL_API_KEY') ?: ($acpConfig['virustotalApiKey'] ?? 
 $vtCache = vt_load_cache();
 
 // Check if we have cached analysis results for this release hash
-$cachedData = $vtCache[$displaySha256] ?? ($vtCache['d3e33e3ea585cdac4df1a592df63647b2527377ed755c5ce59a286fcd453672c'] ?? null);
+$cachedData = $vtCache[$displaySha256] ?? null;
 $isVtIndexed = !empty($cachedData['is_indexed']);
-$vtEnginesClean = $cachedData['engines_clean'] ?? 72;
+$vtEnginesClean = $cachedData['engines_clean'] ?? 0;
 $vtEnginesTotal = $cachedData['engines_total'] ?? 72;
+
+// Cached verdicts are trusted for VT_CACHE_TTL_SECONDS, then re-verified live
+// so updated engine verdicts eventually surface on the download page.
+$cacheAge = is_array($cachedData) ? (time() - (int) ($cachedData['updated_at'] ?? 0)) : PHP_INT_MAX;
+$cacheFresh = ($cacheAge < VT_CACHE_TTL_SECONDS);
 if (!empty($cachedData['virustotal_url'])) {
     $vtReportUrl = (string) $cachedData['virustotal_url'];
 }
@@ -145,6 +150,10 @@ if ($action === 'vt_upload') {
                 'ok' => true,
                 'status' => 'already_indexed',
                 'analysis_id' => (string) $cachedData['analysis_id'],
+                'is_indexed' => true,
+                'threats_detected' => (int) ($cachedData['threats_detected'] ?? 0),
+                'engines_clean' => (int) ($cachedData['engines_clean'] ?? 0),
+                'engines_total' => (int) ($cachedData['engines_total'] ?? 0),
                 'virustotal_url' => 'https://www.virustotal.com/gui/file/' . $displaySha256,
                 'message' => 'Release is already analyzed on VirusTotal.',
             ]);
@@ -223,11 +232,12 @@ if ($action === 'vt_poll') {
 
         if ($analysisStatus === 'completed') {
             $stats = is_array($attrs['stats'] ?? null) ? $attrs['stats'] : [];
-            $threats = (int) ($stats['malicious'] ?? 0) + (int) ($stats['suspicious'] ?? 0);
-            $cleanEngines = (int) ($stats['undetected'] ?? 0) + (int) ($stats['harmless'] ?? 0);
-            $totalEngines = $cleanEngines + $threats + (int) ($stats['timeout'] ?? 0) + (int) ($stats['type-unsupported'] ?? 0);
+            $verdict = vt_stats_to_verdict($stats);
 
-            if ($totalEngines > 0) {
+            if ($verdict !== null) {
+                $threats = $verdict['threats'];
+                $cleanEngines = $verdict['clean'];
+                $totalEngines = $verdict['total'];
                 $vtCache[$displaySha256] = [
                     'is_indexed' => true,
                     'status' => $threats > 0 ? 'flagged' : 'no-detections',
@@ -270,7 +280,7 @@ if ($action === 'vt_check') {
     }
 
     // Cached completed verdict: serve directly without spending VirusTotal API quota
-    if ($isVtIndexed && is_array($cachedData) && isset($cachedData['threats_detected'], $cachedData['engines_total'])) {
+    if ($isVtIndexed && $cacheFresh && is_array($cachedData) && isset($cachedData['threats_detected'], $cachedData['engines_total'])) {
         acp_json_response(vt_verdict_payload(
             $displaySha256,
             (int) $cachedData['threats_detected'],
@@ -282,7 +292,7 @@ if ($action === 'vt_check') {
     }
 
     $vtData = null;
-    if ($isVtIndexed && isset($cachedData['raw'])) {
+    if ($isVtIndexed && $cacheFresh && isset($cachedData['raw'])) {
         $vtData = $cachedData['raw'];
     } elseif ($vtApiKey !== '') {
         $reportRes = vt_query_file_report($displaySha256, $vtApiKey);
@@ -1885,6 +1895,32 @@ if ($action === 'vt_check') {
     function vtStopTimers() {
         if (creepTimer) { clearInterval(creepTimer); creepTimer = null; }
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    var VT_SESSION_PREFIX = 'acs_vt_verdict_';
+    var VT_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+    function vtGetSessionVerdict() {
+        try {
+            var raw = sessionStorage.getItem(VT_SESSION_PREFIX + targetSha256);
+            if (!raw) return null;
+            var v = JSON.parse(raw);
+            if (!v || typeof v.threats_detected !== 'number' || !v.engines_total) return null;
+            if (Date.now() - (v.cached_at || 0) > VT_SESSION_TTL_MS) return null;
+            return v;
+        } catch (err) { return null; }
+    }
+
+    function vtStoreSessionVerdict(p) {
+        try {
+            sessionStorage.setItem(VT_SESSION_PREFIX + targetSha256, JSON.stringify({
+                threats_detected: p.threats_detected || 0,
+                engines_clean: p.engines_clean || 0,
+                engines_total: p.engines_total || 72,
+                virustotal_url: p.virustotal_url || vtReportUrl,
+                cached_at: Date.now()
+            }));
+        } catch (err) {}
     }
 
     function vtFetchJson(url) {

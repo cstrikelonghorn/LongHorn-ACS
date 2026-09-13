@@ -67,8 +67,11 @@ $acpConfig = [
     // stored report. Safe to delete: it rebuilds itself from the files.
     'reportIndexFile' => acs_env('REPORT_INDEX') ?: (__DIR__ . '/database/report_index.sqlite'),
 
-    // Optional VirusTotal API key for live v3 file/hash queries and automated scans on the download page
-    'virustotalApiKey' => acs_env('VIRUSTOTAL_API_KEY') ?: '9b11dc4115f0f0a4279f39ad10704323fd4a24e14a8f669b4d81362994f591e3',
+    // Optional VirusTotal API key for live v3 file/hash queries and automated scans
+    // on the download page. Environment only (ACS_/ACP_ prefix honoured) - never
+    // hardcode it here: this file ships with the site and a leaked key lets anyone
+    // burn the account's daily request quota.
+    'virustotalApiKey' => acs_env('VIRUSTOTAL_API_KEY'),
 ];
 
 // Report integrity: the ACS desktop client HMAC-signs the serialized report so a report body

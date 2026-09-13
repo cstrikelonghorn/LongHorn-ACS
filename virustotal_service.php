@@ -10,7 +10,15 @@ declare(strict_types=1);
  * - Automated upload of large files (> 32MB up to 650MB) via /api/v3/files/upload_url
  * - Polling analysis status /api/v3/analyses/{id}
  * - Local caching in database/virustotal_cache.json to avoid rate limits
+ *
+ * TLS certificate verification is always enabled. Hosts without a system CA
+ * store (typical for PHP on Windows) must either set ACS_VT_CAINFO to a
+ * cacert.pem bundle or drop one at database/cacert.pem.
  */
+
+// Cached verdicts older than this are re-verified against the live API so
+// updated engine verdicts eventually surface on the download page.
+const VT_CACHE_TTL_SECONDS = 604800; // 7 days
 
 function vt_get_cache_file(): string
 {
@@ -33,22 +41,47 @@ function vt_save_cache(array $cache): void
     @file_put_contents($file, json_encode($cache, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
-function vt_query_file_report(string $sha256, string $apiKey): array
+function vt_api_key(): string
 {
-    if ($apiKey === '' || !preg_match('/^[a-f0-9]{64}$/i', $sha256)) {
-        return ['ok' => false, 'status' => 400, 'error' => 'Invalid API key or hash format'];
-    }
+    return trim((string) (getenv('ACS_VIRUSTOTAL_API_KEY') ?: getenv('ACP_VIRUSTOTAL_API_KEY') ?: ''));
+}
 
-    $ch = curl_init('https://www.virustotal.com/api/v3/files/' . strtolower($sha256));
-    curl_setopt_array($ch, [
+/**
+ * Optional explicit CA bundle for TLS verification on hosts without a system
+ * CA store. Resolution order: ACS_VT_CAINFO env var, then database/cacert.pem.
+ */
+function vt_ca_bundle(): string
+{
+    static $ca = null;
+    if ($ca !== null) return $ca;
+    $ca = '';
+    $envCa = trim((string) (getenv('ACS_VT_CAINFO') ?: getenv('ACP_VT_CAINFO') ?: ''));
+    if ($envCa !== '' && is_file($envCa)) {
+        $ca = $envCa;
+    } elseif (is_file(__DIR__ . '/database/cacert.pem')) {
+        $ca = __DIR__ . '/database/cacert.pem';
+    }
+    return $ca;
+}
+
+/**
+ * Shared GET request helper. TLS peer verification stays on (libcurl defaults).
+ * Returns ['status' => int, 'data' => decoded json|null, 'error' => string].
+ */
+function vt_curl_json(string $url, string $apiKey, int $timeout): array
+{
+    $ch = curl_init($url);
+    $opts = [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => [
             'x-apikey: ' . $apiKey,
             'Accept: application/json',
         ],
-        CURLOPT_TIMEOUT => 15,
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
+        CURLOPT_TIMEOUT => $timeout,
+    ];
+    $ca = vt_ca_bundle();
+    if ($ca !== '') $opts[CURLOPT_CAINFO] = $ca;
+    curl_setopt_array($ch, $opts);
 
     $raw = curl_exec($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -56,50 +89,40 @@ function vt_query_file_report(string $sha256, string $apiKey): array
     curl_close($ch);
 
     if ($raw === false || $curlErr !== '') {
-        return ['ok' => false, 'status' => 0, 'error' => 'cURL error: ' . $curlErr];
+        return ['status' => 0, 'data' => null, 'error' => 'cURL error: ' . $curlErr];
+    }
+    return ['status' => $httpCode, 'data' => @json_decode((string) $raw, true), 'error' => ''];
+}
+
+function vt_query_file_report(string $sha256, string $apiKey): array
+{
+    if ($apiKey === '' || !preg_match('/^[a-f0-9]{64}$/i', $sha256)) {
+        return ['ok' => false, 'status' => 400, 'error' => 'Invalid API key or hash format', 'data' => null];
     }
 
-    $json = @json_decode((string) $raw, true);
+    $res = vt_curl_json('https://www.virustotal.com/api/v3/files/' . strtolower($sha256), $apiKey, 15);
 
     return [
-        'ok' => ($httpCode === 200),
-        'status' => $httpCode,
-        'data' => $json,
+        'ok' => ($res['status'] === 200),
+        'status' => $res['status'],
+        'data' => $res['data'],
+        'error' => $res['error'],
     ];
 }
 
 function vt_query_analysis(string $analysisId, string $apiKey): array
 {
     if ($apiKey === '' || $analysisId === '') {
-        return ['ok' => false, 'status' => 400, 'error' => 'Invalid API key or analysis ID'];
+        return ['ok' => false, 'status' => 400, 'error' => 'Invalid API key or analysis ID', 'data' => null];
     }
 
-    $ch = curl_init('https://www.virustotal.com/api/v3/analyses/' . urlencode($analysisId));
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'x-apikey: ' . $apiKey,
-            'Accept: application/json',
-        ],
-        CURLOPT_TIMEOUT => 15,
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
-
-    $raw = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($raw === false || $curlErr !== '') {
-        return ['ok' => false, 'status' => 0, 'error' => 'cURL error: ' . $curlErr];
-    }
-
-    $json = @json_decode((string) $raw, true);
+    $res = vt_curl_json('https://www.virustotal.com/api/v3/analyses/' . urlencode($analysisId), $apiKey, 15);
 
     return [
-        'ok' => ($httpCode === 200),
-        'status' => $httpCode,
-        'data' => $json,
+        'ok' => ($res['status'] === 200),
+        'status' => $res['status'],
+        'data' => $res['data'],
+        'error' => $res['error'],
     ];
 }
 
@@ -117,50 +140,34 @@ function vt_upload_file(string $filePath, string $apiKey): array
 
     // If file is > 32MB, request large file upload URL first
     if ($fileSize > 32 * 1024 * 1024) {
-        $chUrl = curl_init('https://www.virustotal.com/api/v3/files/upload_url');
-        curl_setopt_array($chUrl, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'x-apikey: ' . $apiKey,
-                'Accept: application/json',
-            ],
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_SSL_VERIFYPEER => false,
-        ]);
-        $urlRaw = curl_exec($chUrl);
-        $urlCode = (int) curl_getinfo($chUrl, CURLINFO_HTTP_CODE);
-        curl_close($chUrl);
-
-        if ($urlCode === 200 && is_string($urlRaw)) {
-            $urlJson = @json_decode($urlRaw, true);
-            if (!empty($urlJson['data']) && is_string($urlJson['data'])) {
-                $uploadUrl = $urlJson['data'];
-            } else {
-                return ['ok' => false, 'error' => 'Failed to obtain large file upload URL from VirusTotal'];
-            }
+        $urlRes = vt_curl_json('https://www.virustotal.com/api/v3/files/upload_url', $apiKey, 20);
+        if ($urlRes['status'] === 200 && is_array($urlRes['data']) && is_string($urlRes['data']['data'] ?? null)) {
+            $uploadUrl = $urlRes['data']['data'];
         } else {
-            return ['ok' => false, 'status' => $urlCode, 'error' => 'VirusTotal upload_url endpoint returned HTTP ' . $urlCode . ': ' . substr((string)$urlRaw, 0, 200)];
+            return [
+                'ok' => false,
+                'status' => $urlRes['status'],
+                'error' => ($urlRes['error'] !== '' ? $urlRes['error'] : 'Failed to obtain large file upload URL from VirusTotal'),
+            ];
         }
     }
 
     // Now upload the binary via multipart form-data
     $mime = str_ends_with(strtolower($filePath), '.zip') ? 'application/zip' : 'application/octet-stream';
-    $postFields = [
-        'file' => new CURLFile($filePath, $mime, basename($filePath)),
-    ];
-
     $ch = curl_init($uploadUrl);
-    curl_setopt_array($ch, [
+    $opts = [
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => $postFields,
+        CURLOPT_POSTFIELDS => ['file' => new CURLFile($filePath, $mime, basename($filePath))],
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => [
             'x-apikey: ' . $apiKey,
             'Accept: application/json',
         ],
         CURLOPT_TIMEOUT => 300, // 5 min timeout for 45MB upload
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
+    ];
+    $ca = vt_ca_bundle();
+    if ($ca !== '') $opts[CURLOPT_CAINFO] = $ca;
+    curl_setopt_array($ch, $opts);
 
     $response = curl_exec($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -184,119 +191,22 @@ function vt_upload_file(string $filePath, string $apiKey): array
     return [
         'ok' => false,
         'status' => $httpCode,
-        'error' => $json['error']['message'] ?? ('HTTP ' . $httpCode . ': ' . substr((string)$response, 0, 300)),
+        'error' => $json['error']['message'] ?? ('HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 300)),
         'raw' => $json,
     ];
 }
 
 /**
- * Convert any URL to its VirusTotal v3 base64 URL identifier
+ * Converts a VirusTotal analysis `stats` block (identical shape on both the
+ * /files/{id} report and the /analyses/{id} endpoints) into the verdict
+ * numbers the download gate relies on. Returns null when the block carries
+ * no usable engine data - never invents a clean verdict from nothing.
  */
-function vt_url_to_id(string $url): string
+function vt_stats_to_verdict(array $stats): ?array
 {
-    return rtrim(strtr(base64_encode(trim($url)), '+/', '-_'), '=');
+    $threats = (int) ($stats['malicious'] ?? 0) + (int) ($stats['suspicious'] ?? 0);
+    $clean = (int) ($stats['undetected'] ?? 0) + (int) ($stats['harmless'] ?? 0);
+    $total = $clean + $threats + (int) ($stats['timeout'] ?? 0) + (int) ($stats['type-unsupported'] ?? 0);
+    if ($total <= 0) return null;
+    return ['threats' => $threats, 'clean' => $clean, 'total' => $total];
 }
-
-/**
- * Submit a URL to VirusTotal for cloud scanning: POST /api/v3/urls
- */
-function vt_submit_url(string $url, string $apiKey): array
-{
-    if ($url === '') {
-        return ['ok' => false, 'error' => 'URL cannot be empty'];
-    }
-    if ($apiKey === '') {
-        return ['ok' => false, 'error' => 'VirusTotal API key is empty'];
-    }
-
-    $ch = curl_init('https://www.virustotal.com/api/v3/urls');
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query(['url' => $url]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'x-apikey: ' . $apiKey,
-            'Content-Type: application/x-www-form-urlencoded',
-            'Accept: application/json',
-        ],
-        CURLOPT_TIMEOUT => 20,
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
-
-    $response = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($response === false || $curlErr !== '') {
-        return ['ok' => false, 'status' => 0, 'error' => 'cURL error: ' . $curlErr];
-    }
-
-    $json = @json_decode((string) $response, true);
-    $urlId = vt_url_to_id($url);
-
-    if ($httpCode === 200 && isset($json['data']['id'])) {
-        return [
-            'ok' => true,
-            'status' => 200,
-            'analysis_id' => (string) $json['data']['id'],
-            'url_id' => $urlId,
-            'url' => $url,
-            'virustotal_url' => 'https://www.virustotal.com/gui/url/' . $urlId,
-        ];
-    }
-
-    return [
-        'ok' => false,
-        'status' => $httpCode,
-        'error' => $json['error']['message'] ?? ('HTTP ' . $httpCode . ': ' . substr((string) $response, 0, 300)),
-        'url_id' => $urlId,
-        'url' => $url,
-        'virustotal_url' => 'https://www.virustotal.com/gui/url/' . $urlId,
-    ];
-}
-
-/**
- * Query an existing URL report: GET /api/v3/urls/{url_id}
- */
-function vt_query_url_report(string $urlOrId, string $apiKey): array
-{
-    if ($urlOrId === '' || $apiKey === '') {
-        return ['ok' => false, 'status' => 400, 'error' => 'Invalid parameters'];
-    }
-
-    $urlId = (str_starts_with($urlOrId, 'http://') || str_starts_with($urlOrId, 'https://'))
-        ? vt_url_to_id($urlOrId)
-        : $urlOrId;
-
-    $ch = curl_init('https://www.virustotal.com/api/v3/urls/' . urlencode($urlId));
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'x-apikey: ' . $apiKey,
-            'Accept: application/json',
-        ],
-        CURLOPT_TIMEOUT => 15,
-        CURLOPT_SSL_VERIFYPEER => false,
-    ]);
-
-    $raw = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($raw === false || $curlErr !== '') {
-        return ['ok' => false, 'status' => 0, 'error' => 'cURL error: ' . $curlErr];
-    }
-
-    $json = @json_decode((string) $raw, true);
-
-    return [
-        'ok' => ($httpCode === 200),
-        'status' => $httpCode,
-        'url_id' => $urlId,
-        'virustotal_url' => 'https://www.virustotal.com/gui/url/' . $urlId,
-        'data' => $json,
-    ];
-}
-
