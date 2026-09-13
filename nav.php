@@ -27,6 +27,7 @@ if (!function_exists('acp_nav_icon')) {
             'download' => '<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/>',
             'support'  => '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21"/>',
             'help'     => '<circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.8 2.8 0 1 1 3.7 2.6c-.7.3-1 .8-1 1.5v.3"/><path d="M12 17h.01"/>',
+            'cheats'   => '<path d="M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7z"/><path d="M9 12l2 2 4-4"/>',
         ];
 
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
@@ -68,6 +69,7 @@ if (!function_exists('acp_site_nav')) {
         $targetHref = ($downloadHref === '#' || $downloadHref === '') ? 'download.php' : $downloadHref;
         $items = [
             ['key' => 'home',     'label' => 'Home',     'href' => 'index.php',  'icon' => 'home'],
+            ['key' => 'cheats',   'label' => 'Cheats DB', 'href' => 'admin_cheats.php', 'icon' => 'cheats'],
             ['key' => 'download', 'label' => 'Download', 'href' => $targetHref,   'icon' => 'download'],
             ['key' => 'support',  'label' => 'Support',  'href' => 'mailto:support@cslonghorn.com', 'icon' => 'support'],
             ['key' => 'faq',      'label' => 'FAQ',      'href' => 'faq.php', 'icon' => 'help'],
