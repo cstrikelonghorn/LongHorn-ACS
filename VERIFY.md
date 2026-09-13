@@ -10,11 +10,11 @@ Download `CHECKSUMS.sha256` from the same tagged release and compare:
 Get-FileHash .\ACS-Scanner-1.0.0-windows.exe -Algorithm SHA256
 ```
 
-Expected SHA-256: `67c1d89785a2e14a09fd2cf2dec4a5f9cc0aba0698769e7b2f31afb81d9bf8a7`
+Expected SHA-256: `009f8b3d2603a0c65e7291760fadc99eba93e305ddaa5cf338f02c5d0d076b65`
 
 `FILE-MANIFEST.json` lists every release file with its size and hash. A matching checksum detects differences from the published file; it does not prove safety or protect you if the publisher's release account is compromised.
 
-Every report ACS uploads records the first 12 characters of this SHA-256 as its build fingerprint (`67c1d89785a2` for this release), so a report can always be traced to the exact executable that produced it.
+Every report ACS uploads records the first 12 characters of this SHA-256 as its build fingerprint (`009f8b3d2603` for this release), so a report can always be traced to the exact executable that produced it.
 
 ## Publisher signature
 

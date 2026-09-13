@@ -9,12 +9,12 @@
     "DOTNET-NOTICES.txt",
     "WINDOWSDESKTOP-LICENSE.txt"
   ],
-  "sha256": "67c1d89785a2e14a09fd2cf2dec4a5f9cc0aba0698769e7b2f31afb81d9bf8a7",
-  "sizeBytes": 51712312,
-  "buildFingerprint": "67c1d89785a2",
+  "sha256": "009f8b3d2603a0c65e7291760fadc99eba93e305ddaa5cf338f02c5d0d076b65",
+  "sizeBytes": 51712824,
+  "buildFingerprint": "009f8b3d2603",
   "prerelease": false,
   "publisherSigning": "not-signed",
   "independentAudit": "not-performed",
   "antivirusAnalysis": "not-verified",
-  "preparedAt": "2026-09-13T17:52:53.465390+00:00"
+  "preparedAt": "2026-09-13T18:14:24.129506+00:00"
 }
