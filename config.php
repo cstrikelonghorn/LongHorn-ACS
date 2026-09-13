@@ -253,10 +253,8 @@ function acp_require_upload_auth(array $config): void
         return;
     }
 
-    if (!empty($config['publicDashboard'])) {
-        return;
-    }
-
+    // A public dashboard opens reading reports, never writing them: without a token anyone
+    // could post a fabricated report against any SteamID.
     $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
     if (in_array($remote, ['127.0.0.1', '::1', ''], true)) {
         return;
