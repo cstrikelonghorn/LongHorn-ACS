@@ -1,65 +1,68 @@
 <div align="center">
+  <img src="docs/img/banner.svg" alt="LongHorn ACS — Anti-Cheat Scanner" width="100%" />
 
-<img src="docs/img/hero.png" alt="LongHorn ACS — Anti-Cheat Scanner" width="100%" />
+  <a href="#-download"><img alt="Download" src="https://img.shields.io/badge/1_Download-Latest_Release-ff6a1f?style=for-the-badge&logo=github" /></a>&nbsp;
+  <a href="#-the-app"><img alt="The App" src="https://img.shields.io/badge/2_The_App-Screenshots-191c22?style=for-the-badge" /></a>&nbsp;
+  <a href="#-faq"><img alt="FAQ" src="https://img.shields.io/badge/3_FAQ-Answers-191c22?style=for-the-badge" /></a>&nbsp;
+  <a href="https://www.cslonghorn.com"><img alt="Website" src="https://img.shields.io/badge/cslonghorn.com-Website-191c22?style=for-the-badge" /></a>
 
-# LongHorn ACS — Anti-Cheat Scanner
+  <br/><br/>
 
-**Evidence-based anti-cheat for Counter-Strike 1.6.**
+  ![Windows](https://img.shields.io/badge/Windows-10%2F11_x64-0078D4?style=flat-square&logo=windows&logoColor=white)
+  ![Scanner](https://img.shields.io/badge/Scanner-v3.3-ff6a1f?style=flat-square)
+  ![Web](https://img.shields.io/badge/Web-PHP_8.2%2B-777BB4?style=flat-square&logo=php&logoColor=white)
+  ![Server](https://img.shields.io/badge/Server-ReHLDS%20%2F%20Metamod-e23?style=flat-square)
+  ![Status](https://img.shields.io/badge/Status-In_Development-ffb020?style=flat-square)
 
-A Windows desktop scanner, a PHP web dashboard, and a ReHLDS server-side behavioural engine — together they produce signed, reviewable evidence instead of guesses.
-
-[![Status](https://img.shields.io/badge/status-in%20development-orange?style=flat-square)](#project-status)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-0078d4?style=flat-square)](#download)
-[![Scanner](https://img.shields.io/badge/scanner-v3.3-111?style=flat-square)](#download)
-[![Web](https://img.shields.io/badge/web-PHP%208.2%2B-777bb4?style=flat-square)](#deploy-the-web-dashboard)
-[![Server](https://img.shields.io/badge/server-ReHLDS%20%2F%20Metamod-e23?style=flat-square)](#server-side-engine)
-
-[Download](#download) · [FAQ](docs/FAQ.md) · [Screenshots](#the-app) · [Architecture](docs/ARCHITECTURE.md) · [Security](SECURITY.md)
+  **Evidence-based anti-cheat for Counter-Strike 1.6.**
+  A Windows scanner, a PHP report dashboard and a ReHLDS server engine —
+  built to collect strong evidence, explain it clearly, and leave every ban to a human.
 
 </div>
 
----
+<br/>
 
-## What it is
-
-Most of the surviving CS 1.6 population does not run the retail Steam client. They run repacks, NextClient, GSClient, emulators — and several of those modify the engine **by design**. A scanner that cannot tell that apart from cheating is worse than useless.
-
-ACS is built around one idea: **collect strong evidence, explain it clearly, and let a human decide.** It never bans on its own.
+## 🧭 Overview
 
 | | |
-|---|---|
-| 🖥 **Desktop scanner** | A C# WinForms app that attaches to a running `hl.exe`, inventories the game and checks it against a signature database + artifact corpus, then uploads a **signed** report. |
-| 🌐 **Web dashboard** | A PHP dashboard that stores reports, shows what was found, ranks review items, and supports compare, history and PDF export. |
-| 🛡 **Server engine** | An optional ReHLDS/Metamod plugin that watches how a player actually plays — aim, recoil, movement, timing — with no client cooperation. |
+|:---|:---|
+| 🖥️ **Desktop scanner**<br/>`windows/` (C#/.NET) | Attaches to a running `hl.exe`, inventories the game, checks it against a signature database and an artifact corpus, then uploads a **signed** report. |
+| 🌐 **Web dashboard**<br/>repo root (PHP) | Stores reports, shows exactly what was found, ranks lower-confidence items for review, and supports search, compare, history and PDF export. |
+| 🛡️ **Server engine**<br/>`server/` (C++) | An optional ReHLDS/Metamod plugin that analyses how a player actually plays — aim, recoil, movement, timing — with no client cooperation. |
 
-## The App
+> [!IMPORTANT]
+> **Evidence, not a verdict.** A report is a set of observations. Bans are always a human decision made by the server operator.
+
+## 📸 The App
+
+| Idle | Scanning |
+|:---:|:---:|
+| ![Idle](docs/img/app-idle.png) | ![Scanning](docs/img/app-scanning.png) |
+
+| Detected | Review |
+|:---:|:---:|
+| ![Detected](docs/img/app-detected.png) | ![Review](docs/img/app-warning.png) |
 
 <div align="center">
 
-| Idle | Scanning |
-|---|---|
-| ![App idle](docs/img/app-idle.png) | ![App scanning](docs/img/app-scanning.png) |
-
-| Detected | Review |
-|---|---|
-| ![App detected](docs/img/app-detected.png) | ![App warning](docs/img/app-warning.png) |
+More screenshots in [`docs/img/`](docs/img) · full walk-through in the [**FAQ**](docs/FAQ.md)
 
 </div>
 
-Full-size: [`docs/img/`](docs/img) · more on the [Download page](docs/DOWNLOAD.md).
+## 🔍 What it scans
 
-## Features
+| | |
+|:---|:---|
+| 🧩 **Module integrity** | Engine code compared **byte-for-byte** against the file on disk — inline hooks, detours, mid-function patches, IAT and EAT hooks. |
+| 🧠 **Memory evidence** | Private executable regions that back no file on disk — the manual-map signature. |
+| 👁️ **External-cheat probes** | Processes holding read/write handles on the game, foreign threads, overlay windows. |
+| 📜 **Script analysis** | Alias graphs matched on control-flow shape — bunny-hop, rapid-fire, no-recoil scripts caught regardless of naming. |
+| 🗂️ **Files & drivers** | Live `cstrike` inventory with hashes; kernel drivers with signer and signature state. |
+| 🎮 **Client recognition** | Steam, NextClient, GSClient, GoldClient, RevEmu/RevCrew, SmartSteamEmu, Goldberg — identified, not flagged. |
+| 🗃️ **Artifact corpus** | Every hash ever seen, classified clean / cheat / unknown by prevalence across **distinct machines**. |
+| 📈 **Player risk** | Client scan risk and server behaviour combined into one explainable score per SteamID. |
 
-- **Module code verification** — every game module's `.text` is compared byte-for-byte against the file on disk, catching inline hooks, detours, mid-function patches, IAT and EAT hooks.
-- **Cheat-named & foreign modules** — DLLs mapped into `hl.exe` from outside the game/Steam/Windows paths are flagged; hashes always go to the corpus.
-- **Memory evidence** — private executable regions that back no file on disk (manual-map indicator).
-- **External-cheat probes** — processes holding read/write handles on the game, foreign threads, and overlay windows.
-- **Script & config analysis** — resolves the `alias` graph and matches control-flow shape, so bunny-hop / rapid-fire / no-recoil scripts are caught regardless of naming.
-- **Client & emulator detection** — Steam, NextClient, GSClient, GoldClient, RevEmu/RevCrew, SmartSteamEmu, Goldberg and more, so a client's own detours are not treated as cheating.
-- **Artifact corpus** — every hash ever seen, classified clean / cheat / unknown by prevalence across **distinct machines**.
-- **Server correlation** — client scan risk and ReHLDS behavioural risk combine into one explainable per-SteamID score.
-
-## How it works
+## ⚙️ How it works
 
 ```text
   Windows scanner                     Web dashboard                 ReHLDS plugin
@@ -73,88 +76,102 @@ Full-size: [`docs/img/`](docs/img) · more on the [Download page](docs/DOWNLOAD.
                             one risk score per SteamID
 ```
 
-See [Architecture](docs/ARCHITECTURE.md) for the full breakdown.
+## 🚀 Getting started
 
-## Download
+<details open>
+<summary><b>Desktop scanner</b></summary>
 
-> The desktop scanner runs only while **Counter-Strike is already open**.
+<br/>
 
-- **Requirements:** Windows 10/11 (x64), .NET runtime, Counter-Strike 1.6.
-- Full instructions and checksums: **[docs/DOWNLOAD.md](docs/DOWNLOAD.md)**.
-- Releases (once published) will appear under **Releases** with SHA-256 for every artifact.
-
-```text
-1. Configure  windows/acp-settings.json   → apiUrl + apiToken
-2. Launch Counter-Strike 1.6
-3. Run the scanner  →  scan  →  signed report uploads automatically
+```jsonc
+// windows/acp-settings.json
+{
+  "apiUrl": "https://your-host/acp/api.php",
+  "apiToken": "THE_SAME_VALUE_AS_ACP_API_TOKEN"
+}
 ```
 
-## Deploy the web dashboard
+1. Launch **Counter-Strike 1.6** — the scanner only runs while the game is open.
+2. Run the scanner and press **Scan**; play normally during the live-behaviour stage.
+3. The signed report uploads automatically when the scan finishes.
 
-Requirements: **PHP 8.2+** with `json`, `fileinfo`, and `random_bytes`.
+> [!TIP]
+> Run as **administrator** for the deepest memory and process evidence.
+
+</details>
+
+<details>
+<summary><b>Web dashboard (PHP 8.2+)</b></summary>
+
+<br/>
 
 ```bash
-# 1. Upload the web files to your host (not windows/ or server/).
-# 2. Ensure the reports/ directory is writable.
+# 1. Upload the web files to your host (not windows/ or server/)
+# 2. Make sure reports/ is writable
 # 3. Verify:
 curl "https://your-host/acp/api.php?action=health"
 
-# 4. Configure secrets:
-ACP_API_TOKEN=<long random secret>       # upload + signing token (shared with the client)
-ACP_ADMIN_TOKEN=<long random secret>     # dashboard / review / classification
+# 4. Secrets (fail-closed: uploads are local-only until a token exists)
+ACP_API_TOKEN=<long random secret>     # upload + signing token (shared with the client)
+ACP_ADMIN_TOKEN=<long random secret>   # dashboard / review / classification
 ```
 
-Details in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Use **HTTPS** in production.
+Full guide: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — use **HTTPS** in production.
 
-## Server-side engine
+</details>
+
+<details>
+<summary><b>Server engine (ReHLDS)</b></summary>
+
+<br/>
 
 ```bash
 curl -o resources.ini "https://your-host/acp/rechecker.php?action=resources"
-# drop in cstrike/addons/rechecker/resources.ini
+# → cstrike/addons/rechecker/resources.ini
 ```
 
-See [`server/`](server/) and [docs/DETECTION.md](docs/DETECTION.md).
+Review the file before deploying and start with `amx_kick`, not a ban. See [`server/`](server/).
 
-## Screenshots & docs
+</details>
 
-| Document | What's inside |
-|---|---|
-| [docs/FAQ.md](docs/FAQ.md) | How it works, how to use it, what it scans, how safe it is |
-| [docs/DOWNLOAD.md](docs/DOWNLOAD.md) | Install, configure, verify |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, data flow, storage |
-| [docs/DETECTION.md](docs/DETECTION.md) | Every detection channel explained |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Hosting, nginx/Apache, secrets |
-| [SECURITY.md](SECURITY.md) | Threat model, report integrity, disclosure |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+## 📚 Documentation
 
-## Documentation site
+| | |
+|:---|:---|
+| 📥 [**Download & Install**](docs/DOWNLOAD.md) | Requirements, configuration, verification, troubleshooting |
+| ❓ [**FAQ**](docs/FAQ.md) | How it works, how to use it, tutorials, common questions |
+| 🏗️ [**Architecture**](docs/ARCHITECTURE.md) | Components, data flow, storage, risk model |
+| 🔍 [**Detection**](docs/DETECTION.md) | Every detection channel explained |
+| 🖥️ [**Deployment**](docs/DEPLOYMENT.md) | Hosting, secrets, nginx/Apache rules |
+| 🔐 [**Security**](SECURITY.md) | Threat model, report integrity, disclosure |
+| 📝 [**Changelog**](CHANGELOG.md) | Release history |
 
-A static, public-safe version of these docs lives in [`site/`](site/) and can be published with GitHub Pages (`.github/workflows/pages.yml`). It contains **no application source** — a CI guard refuses to publish if any back-end file (`.php`, `.cs`, `.cpp`, `.sqlite`, …) appears under `site/`.
+## 🗺️ Project status
 
-## Project status
+**In development — not production-ready.** APIs, rules and UI can change without notice.
 
-**In development — not production-ready.** The detection engine, web dashboard and server plugin are functional, but APIs, rules and the UI can change without notice. Treat this repository as a work in progress.
-
-Roadmap:
-
-- [ ] Finish the client & emulator recognition pass
-- [ ] Publish signed release builds with checksums
-- [ ] Complete the ReHLDS behavioural rule set
-- [ ] Harden the report index for large archives
+- [x] Detection engine: module integrity, hooks, memory, scripts, external probes
+- [x] Web dashboard: reports, search, compare, export, risk model
+- [x] Client & emulator recognition (NextClient, GSClient, RevEmu, SSE, …)
+- [ ] Signed release builds with checksums
+- [ ] Complete ReHLDS behavioural rule set
 - [ ] Public documentation pass
 
-## Security & privacy
+## 🛡️ Security & privacy
 
-- Reports are **HMAC-SHA256 signed** — tamper-evident, and enforceable on the server.
-- Upload token and admin/classification token are **separate secrets**.
+- Reports are **HMAC-SHA256 signed** — tamper-evident, enforceable server-side.
+- Upload token and admin token are **separate secrets**.
 - Player IPs are stored and displayed **masked** (`109.187.61.***`).
 - Report storage is kept **outside direct web access**; non-web folders ship deny-all rules.
-- Please report vulnerabilities per [SECURITY.md](SECURITY.md).
+- Report a vulnerability per [SECURITY.md](SECURITY.md) — please don't open public issues.
 
-## License
-
-Private, **all rights reserved** — see [LICENSE](LICENSE). This repository is not licensed for redistribution.
+---
 
 <div align="center">
-<sub>Created by <a href="https://www.cslonghorn.com">LongHorn</a> · cslonghorn.com</sub>
+
+**[⬇️ Download](docs/DOWNLOAD.md)** · **[❓ FAQ](docs/FAQ.md)** · **[📖 Docs](docs/ARCHITECTURE.md)** · **[🌐 cslonghorn.com](https://www.cslonghorn.com)**
+
+<sub>Copyright © 2026 <b>LongHorn</b> — all rights reserved. Not affiliated with or endorsed by Valve Corporation.<br/>
+Counter-Strike, Half-Life and Steam are trademarks of their respective owners.</sub>
+
 </div>
