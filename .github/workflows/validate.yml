@@ -1,0 +1,86 @@
+name: Validate distribution
+
+# CI for the distribution repository: no source to build here, so this
+# validates the *release package* instead - JSON integrity, checksum file
+# format, manifest consistency and the documentation site pages.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON files
+        run: |
+          set -e
+          fail=0
+          for f in $(find . -name '*.json' -not -path './.git/*'); do
+            if python3 -m json.tool "$f" > /dev/null 2>&1; then
+              echo "OK      $f"
+            else
+              echo "INVALID $f"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Verify checksums file format
+        run: |
+          set -e
+          # Every non-comment line must be: <64 hex chars>  <filename>
+          bad=$(grep -Ev '^(#[^!]|\s*$|[a-fA-F0-9]{64}\s+\S+$)' CHECKSUMS.sha256 || true)
+          if [ -n "$bad" ]; then
+            echo "Malformed lines in CHECKSUMS.sha256:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "CHECKSUMS.sha256 format OK ($(grep -cE '^[a-fA-F0-9]{64}' CHECKSUMS.sha256) entries)"
+
+      - name: Verify file manifest consistency
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, sys
+          manifest = json.load(open("FILE-MANIFEST.json"))
+          files = manifest if isinstance(manifest, list) else manifest.get("files", [])
+          if not files:
+              print("FILE-MANIFEST.json: no file entries found"); sys.exit(1)
+          print(f"FILE-MANIFEST.json: {len(files)} entries")
+          PY
+
+      - name: Verify release metadata
+        run: |
+          set -e
+          python3 -c "import json; d = json.load(open('release.json')); print('release.json OK:', list(d.keys()))"
+
+      - name: Verify documentation pages exist
+        run: |
+          set -e
+          for p in index.html faq.html download.html privacy.html terms.html license.html; do
+            test -f "site/$p" || { echo "missing site/$p"; exit 1; }
+            echo "OK      site/$p"
+          done
+
+      - name: Guard — no back-end source in the distribution
+        run: |
+          set -e
+          leaked=$(find . -type f \
+            \( -name '*.php' -o -name '*.cs' -o -name '*.cpp' -o -name '*.c' \
+               -o -name '*.h' -o -name '*.hpp' -o -name '*.sqlite' \) \
+            -not -path './.git/*' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::Source/back-end files found in the distribution:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "Guard passed: no source files present."
