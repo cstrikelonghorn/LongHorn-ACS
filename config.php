@@ -627,10 +627,17 @@ function acs_release_version(): string
 {
     static $version = null;
     if ($version === null) {
+        // tools/release_scanner.ps1 writes the version beside the exe it describes. The .csproj
+        // is not deployed, so on a live server this file is the only place the version exists.
+        $released = @file_get_contents(__DIR__ . '/windows/release/version.txt');
         $project = @file_get_contents(__DIR__ . '/windows/ACPScanner.csproj');
-        $version = (is_string($project) && preg_match('#<Version>\s*([0-9A-Za-z.+-]+)\s*</Version>#', $project, $m))
-            ? $m[1]
-            : '1.0.0';
+        if (is_string($released) && preg_match('#^\s*([0-9][0-9A-Za-z.+-]*)\s*$#', $released, $m)) {
+            $version = $m[1];
+        } elseif (is_string($project) && preg_match('#<Version>\s*([0-9A-Za-z.+-]+)\s*</Version>#', $project, $m)) {
+            $version = $m[1];
+        } else {
+            $version = '1.0.0';
+        }
     }
     return $version;
 }

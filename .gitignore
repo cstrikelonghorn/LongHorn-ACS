@@ -52,3 +52,7 @@ publication/public-repo/
 publication/artifacts/
 publication/staging/
 publication/verification/
+
+# Reverse-engineering workspace: resources and scripts extracted from a third-party
+# anti-cheat binary. Reference only - never part of this project's source.
+windows/oldproject/

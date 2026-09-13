@@ -16,7 +16,7 @@ First release. The desktop app is a single self-contained executable that runs o
 - Client and engine identity read from the running game: retail Steam is reported only when `hl.exe` and `hw.dll` are validly signed by Valve and no emulator loads Steam from the game folder; non-Steam editions are named; the engine build date is read from the engine binary.
 - Signature status per module (valid / not signed / modified / untrusted), so a Valve-signed engine patched by a non-Steam edition is recorded as modified rather than reported as a forged signature.
 - Build fingerprint (SHA-256 prefix of the executable) in every report and on the report page.
-- The connected game server is identified from the game's live UDP traffic at scan time (exact IP:Port, or No Server Detected); the app runs as administrator for this.
+- The connected game server is identified at scan time from the game process and Valve A2S server queries (exact IP:Port, or No Server Detected), with standard user rights — no administrator prompt.
 - Engine build number and version read exactly from the engine (for example build 4554, v1.1.2.6).
 - Redesigned desktop interface, privacy screen and evidence log.
 - Artifact corpus with prevalence across distinct machines; automatic clean classification for common signed binaries.

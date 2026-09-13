@@ -9,7 +9,7 @@
 | OS | Windows 10 / 11 — 32-bit or 64-bit |
 | Game | Counter-Strike 1.6 (`hl.exe` / `cstrike.exe`) |
 | Runtime | .NET (bundled in the self-contained build) |
-| Rights | Administrator (Windows asks when the app starts; needed to identify the joined server from live traffic) |
+| Rights | Standard user — no administrator prompt. Running as administrator is optional and gives deeper memory evidence. |
 | Server | A reachable ACS web deployment (`api.php`) |
 
 ## Install
@@ -49,7 +49,17 @@ dotnet restore windows/ACPScanner.csproj
 dotnet publish windows/ACPScanner.csproj -c Release
 ```
 
-Output is a single executable in `windows/release/`. The optional kernel helper in `windows/acpdriver/` is a reference scaffold and needs the WDK + a signed certificate before it can be built or loaded.
+Output is a single executable in `windows/release/`. That is fine for testing, but never hand players a build like this: every rebuild is a new file, and SmartScreen starts its reputation from zero for each one.
+
+To ship to players, cut a numbered release from committed code:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/release_scanner.ps1 -Version 1.0.1
+```
+
+It refuses uncommitted changes under `windows/` and versions that are not higher than the current one, bumps the version in `ACPScanner.csproj`, publishes, checks the exe carries that version and an upload token, writes `windows/release/version.txt` and a `.sha256` file, then commits and tags `v1.0.1`. Upload `ACPScanner.exe` together with `version.txt` — the Download page reads the version from that file.
+
+The optional kernel helper in `windows/acpdriver/` is a reference scaffold and needs the WDK + a signed certificate before it can be built or loaded.
 
 ## Troubleshooting
 

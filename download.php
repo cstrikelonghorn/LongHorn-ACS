@@ -59,8 +59,8 @@ $displaySize = $targetFile !== null ? round(filesize($targetFile) / (1024 * 1024
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Download ACS Desktop Scanner v1.0 — Official Forensic Suite for Counter-Strike 1.6</title>
-    <meta name="description" content="ACS Desktop Scanner v1.0 — a free cheat scanner for Counter-Strike 1.6. Reads-only, safe, no install. Ask suspicious players to run a scan and verify their report on our website.">
+    <title>Download ACS Desktop Scanner v<?= htmlspecialchars(acs_release_version(), ENT_QUOTES) ?> — Official Forensic Suite for Counter-Strike 1.6</title>
+    <meta name="description" content="ACS Desktop Scanner v<?= htmlspecialchars(acs_release_version(), ENT_QUOTES) ?> — a free cheat scanner for Counter-Strike 1.6. Reads-only, safe, no install. Ask suspicious players to run a scan and verify their report on our website.">
     <link rel="stylesheet" href="assets/theme.css">
     <?php uds_theme_head(); ?>
     <link rel="stylesheet" href="assets/acp.css?v=<?= filemtime(__DIR__ . '/assets/acp.css') ?>">
@@ -1161,7 +1161,7 @@ $displaySize = $targetFile !== null ? round(filesize($targetFile) / (1024 * 1024
                     <span class="dl-badge-sep">/</span>
                     <span class="dl-badge-channel">v<?= htmlspecialchars(acs_release_version(), ENT_QUOTES) ?> STABLE</span>
                 </div>
-                <h1>ACS Desktop Scanner <em>v1.0</em></h1>
+                <h1>ACS Desktop Scanner <em>v<?= htmlspecialchars(acs_release_version(), ENT_QUOTES) ?></em></h1>
                 <div class="dl-hero-sub">Counter-Strike 1.6 Anti-Cheat Forensic Suite</div>
                 <p class="dl-hero-lead">
                     A lightweight forensic cheat scanner engineered specifically for Counter-Strike 1.6. It performs non-invasive memory and filesystem verification to detect unauthorized hooks, injected DLLs, and aim/trigger/ESP modifications in real time. It operates <em>read-only</em> during live gameplay — zero driver requirements, zero system modifications, and zero game alteration. Reports are cryptographically signed with HMAC-SHA256 and verified instantly via web telemetry.
@@ -1248,7 +1248,7 @@ $displaySize = $targetFile !== null ? round(filesize($targetFile) / (1024 * 1024
     <div style="margin-bottom: var(--sp-3);">
         <span style="font-family: var(--f-mono); font-size: 11px; letter-spacing: 1.5px; color: #f0ad3a; text-transform: uppercase; font-weight: 700;">Diagnostic Console Simulation</span>
         <h2 style="font-family: var(--f-display); font-size: 26px; font-weight: 700; text-transform: uppercase; margin: 4px 0 6px; color: var(--text);">
-            ACS Desktop App v1.0 — Live Interactive Terminal
+            ACS Desktop App v<?= htmlspecialchars(acs_release_version(), ENT_QUOTES) ?> — Live Interactive Terminal
         </h2>
         <p style="color: var(--muted); font-size: 14px; margin: 0 0 var(--sp-4);">
             Experience the internal diagnostics and HUD telemetry of the Windows client. Run real-time simulation sequences to evaluate clean match scans, offline configuration warnings, or active memory detours.

@@ -87,3 +87,12 @@ Only `DETECTED` + high-confidence signatures are emitted, using `MISSING` rules.
 1. Back up `reports/` and `database/`.
 2. Replace the web files.
 3. Reload `index.php`; the report index and corpus migrate themselves.
+
+### Releasing a new scanner build
+
+Players should only ever download numbered releases, and the same file for weeks — SmartScreen reputation is tied to the exact file, so every rebuild starts from zero.
+
+1. Commit the scanner changes.
+2. `powershell -ExecutionPolicy Bypass -File tools/release_scanner.ps1 -Version X.Y.Z`
+3. Add the release to `CHANGELOG.md`.
+4. Upload `windows/release/ACPScanner.exe` **and** `windows/release/version.txt` together.
