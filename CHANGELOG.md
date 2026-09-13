@@ -8,9 +8,23 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
-## [3.3.0] — 2026
+## [1.0.0] — 2026-09-13
+
+First release. The desktop app is a single self-contained executable that runs on 32-bit and 64-bit Windows 10/11.
 
 ### Added
+- Client and engine identity read from the running game: retail Steam is reported only when `hl.exe` and `hw.dll` are validly signed by Valve and no emulator loads Steam from the game folder; non-Steam editions are named; the engine build date is read from the engine binary.
+- Signature status per module (valid / not signed / modified / untrusted), so a Valve-signed engine patched by a non-Steam edition is recorded as modified rather than reported as a forged signature.
+- Build fingerprint (SHA-256 prefix of the executable) in every report and on the report page.
+- The connected game server is identified from the game's live UDP traffic at scan time (exact IP:Port, or No Server Detected); the app runs as administrator for this.
+- Engine build number and version read exactly from the engine (for example build 4554, v1.1.2.6).
+- Redesigned desktop interface, privacy screen and evidence log.
+- Artifact corpus with prevalence across distinct machines; automatic clean classification for common signed binaries.
+- `review.php` Unknown-bucket queue with suspicion ranking and one-click classification.
+- Report index (`report_index.sqlite`) so list views no longer decode every report.
+- Module code verification (`.text`/IAT/EAT byte comparison), config/alias analysis, and external-cheat probes.
+- HMAC-signed reports and gated report access (admin token / localhost).
+- ReHLDS server-side behavioural engine and signed telemetry ingestion.
 - Report dashboard: recent-scans search by player name / server, click-to-filter by server, pagination, and a connected-server column.
 - Basic Data panel upgrade: player local time, IP country flag, client/build badge, total scans, server name/address/map.
 - Modern metric gauges and a HUD-style verdict, with colour used sparingly.
@@ -19,25 +33,15 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - WOW64 fix, file-selection and concurrent server lookup in the desktop scanner.
 
 ### Changed
+- Reports upload automatically when a scan finishes; consent is given once, on the privacy screen before the scan.
+- A module's name alone no longer earns trust; it must be part of the game install or validly signed by a trusted publisher.
+- The download page shows the real checksum of the file it serves.
 - Client profiles expanded for NextClient, GSClient, GoldClient, RevEmu/RevCrew, SmartSteamEmu, Goldberg, CreamAPI, GreenLuma, and the ReHLDS server platform (ReUnion/ReAPI).
 - Rule-ID namespace normalisation so client profiles apply to live `acp-*` findings.
 
-## [3.2.0]
-
-### Added
-- Artifact corpus with prevalence across distinct machines; automatic clean classification for common signed binaries.
-- `review.php` Unknown-bucket queue with suspicion ranking and one-click classification.
-- Report index (`report_index.sqlite`) so list views no longer decode every report.
-
 ### Removed
 - Cursor-based live behaviour verdicts in the desktop scanner (replaced by server-side usercmd analysis).
+- The report review window after a scan, and the "Share this report" bar on the report page.
 
-## [3.0.0]
-
-### Added
-- Module code verification (`.text`/IAT/EAT byte comparison), config/alias analysis, and external-cheat probes.
-- HMAC-signed reports and gated report access (admin token / share link / localhost).
-- ReHLDS server-side behavioural engine and signed telemetry ingestion.
-
-[Unreleased]: https://github.com/cstrikelonghorn/LongHorn-ACS/compare/v3.3.0...HEAD
-[3.3.0]: https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v3.3.0
+[Unreleased]: https://github.com/cstrikelonghorn/LongHorn-ACS/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.0

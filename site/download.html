@@ -28,7 +28,7 @@
 
 <div class="hero">
   <div class="wrap">
-    <span class="kicker">Windows 10 / 11 (x64)</span>
+    <span class="kicker">Windows 10 / 11 · 32-bit &amp; 64-bit</span>
     <h1>Download <em>ACS</em></h1>
     <p>The desktop scanner only runs while Counter-Strike is already open — it attaches to a live <code>hl.exe</code>.</p>
     <div class="actions">
@@ -55,8 +55,8 @@
   <div class="wrap">
     <h2>Install</h2>
     <ol class="steps">
-      <li><b>Download</b> the release archive and extract it somewhere, e.g. <code>C:\Tools\ACS</code>.</li>
-      <li><b>Configure</b> <code>acp-settings.json</code> next to the executable with your <code>apiUrl</code> and <code>apiToken</code>.</li>
+      <li><b>Download</b> <code>ACS-Scanner-1.0.0-windows.exe</code> — the whole app is this one file — and put it anywhere, e.g. <code>C:\Tools\ACS</code>.</li>
+      <li><b>Configure</b> <code>acp-settings.json</code> next to the executable, or in <code>%APPDATA%\LongHorn ACS\</code>, with your <code>apiUrl</code> and <code>apiToken</code>.</li>
       <li><b>Start Counter-Strike 1.6</b> and join a server (or stay at the menu).</li>
       <li><b>Run the scanner</b>, press Scan, and let it finish — the signed report uploads automatically.</li>
     </ol>
@@ -68,7 +68,7 @@
   <div class="wrap">
     <h2>Verify the download</h2>
     <p class="lead">Each release publishes a SHA-256 checksum. On Windows:</p>
-    <p><code>Get-FileHash .\ACS-Scanner-v3.3.0.zip -Algorithm SHA256</code></p>
+    <p><code>Get-FileHash .\ACS-Scanner-1.0.0-windows.exe -Algorithm SHA256</code></p>
     <p style="margin-top:10px">Compare the result against the value in the release notes before running the app.</p>
   </div>
 </section>
