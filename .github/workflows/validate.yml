@@ -37,14 +37,15 @@ jobs:
       - name: Verify checksums file format
         run: |
           set -e
-          # Every non-comment line must be: <64 hex chars>  <filename>
-          bad=$(grep -Ev '^(#[^!]|\s*$|[a-fA-F0-9]{64}\s+\S+$)' CHECKSUMS.sha256 || true)
+          # Normalise CRLF (the publication tooling writes Windows line endings)
+          tr -d '\r' < CHECKSUMS.sha256 > /tmp/checksums.txt
+          bad=$(grep -Ev '^(#[^!]|\s*$|[a-fA-F0-9]{64}\s+\S+$)' /tmp/checksums.txt || true)
           if [ -n "$bad" ]; then
             echo "Malformed lines in CHECKSUMS.sha256:"
             echo "$bad"
             exit 1
           fi
-          echo "CHECKSUMS.sha256 format OK ($(grep -cE '^[a-fA-F0-9]{64}' CHECKSUMS.sha256) entries)"
+          echo "CHECKSUMS.sha256 format OK ($(grep -cE '^[a-fA-F0-9]{64}' /tmp/checksums.txt) entries)"
 
       - name: Verify file manifest consistency
         run: |
