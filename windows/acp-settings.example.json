@@ -1,0 +1,4 @@
+{
+  "apiUrl": "https://your-host/acp/api.php",
+  "apiToken": "SET_ME_TO_THE_SERVER_ACP_API_TOKEN"
+}

@@ -1,0 +1,224 @@
+/* ============================================================================
+   UDS FOOTBAR — persistent style picker
+   ----------------------------------------------------------------------------
+   Reads as an application status bar, not a banner. The rules that keep it
+   quiet:
+
+     - 34px tall, so it costs almost nothing at the bottom of the viewport
+     - no accent hairline and no boxed monogram; identity is a single 3px tick
+     - one weight of type, one size step between title and status
+     - the surface is translucent and heavily blurred, so page content stays
+       visible through it -- that is what makes it read as part of the page
+       rather than a bar sitting on top of it
+
+   Theme-neutral: every colour comes from the active theme's tokens, so
+   lh-style.css only has to adjust a couple of details.
+   ========================================================================== */
+
+:root {
+    --uds-fb-h: 34px;
+}
+
+/* Keep page content clear of the fixed bar. */
+body {
+    padding-bottom: calc(var(--uds-fb-h) + 10px);
+}
+
+.uds-footbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    height: var(--uds-fb-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 0 clamp(10px, 2vw, 22px);
+    background: color-mix(in srgb, var(--surface, #0b1120) 76%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    backdrop-filter: blur(18px) saturate(1.3);
+    border-top: 1px solid var(--line-soft, rgba(125, 165, 210, 0.09));
+    box-shadow: 0 -6px 22px rgba(0, 0, 0, 0.26);
+    font-family: var(--f-ui, 'Segoe UI', Arial, sans-serif);
+    color: var(--text-2, #b6c9dd);
+    user-select: none;
+}
+
+.uds-fb-left,
+.uds-fb-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* -------------------------------------------------------------- identity - */
+/* A single tick of brand colour replaces the old boxed monogram. */
+.uds-fb-mark {
+    width: 3px;
+    height: 13px;
+    flex: none;
+    background: var(--accent, #00e5ff);
+}
+
+.uds-fb-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text-2, #b6c9dd);
+    white-space: nowrap;
+}
+
+.uds-fb-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-family: var(--f-mono, monospace);
+    font-size: 10.5px;
+    letter-spacing: 0.2px;
+    color: var(--muted, #7d93aa);
+}
+
+/* Divider carried by the status block itself rather than an extra element. */
+.uds-fb-status::before {
+    content: "";
+    width: 1px;
+    height: 11px;
+    margin-right: 4px;
+    flex: none;
+    background: var(--line, rgba(125, 165, 210, 0.16));
+}
+
+.uds-fb-status-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.uds-fb-dot {
+    width: 5px;
+    height: 5px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--ok, #00e08a);
+    opacity: 0.9;
+}
+
+.uds-fb-status.is-busy .uds-fb-dot  { background: var(--warn, #ffb020); }
+.uds-fb-status.is-alert .uds-fb-dot { background: var(--danger, #ff3b5c); }
+
+/* Only a live alert earns motion, and even then it is a slow breath rather
+   than the old pulse ring. */
+.uds-fb-status.is-alert .uds-fb-dot {
+    animation: uds-fb-breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes uds-fb-breathe {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .uds-fb-status.is-alert .uds-fb-dot { animation: none; }
+}
+
+/* ---------------------------------------------------------- theme picker - */
+.uds-fb-label {
+    font-family: var(--f-mono, monospace);
+    font-size: 9.5px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--muted-deep, #5b7089);
+    white-space: nowrap;
+}
+
+.uds-theme-switch {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    padding: 2px;
+    border: 1px solid var(--line, rgba(125, 165, 210, 0.16));
+    background: color-mix(in srgb, var(--bg, #05070d) 55%, transparent);
+}
+
+/* The sliding highlight behind the active option. */
+.uds-theme-thumb {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 2px;
+    width: 0;
+    background: var(--accent-dim, rgba(0, 229, 255, 0.13));
+    border: 1px solid var(--line-strong, rgba(0, 229, 255, 0.38));
+    transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+}
+
+.uds-theme-opt {
+    position: relative;
+    z-index: 1;
+    padding: 3px 11px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.45;
+    white-space: nowrap;
+    color: var(--muted, #7d93aa);
+    transition: color 0.24s ease;
+
+    /* Neutralise inherited page button styling. The host pages style bare
+       `button` aggressively -- index.php pins `height: 54px`, which silently
+       burst this 34px bar until it was reset here. Anything that can dictate
+       box size is pinned back to auto, not just padding. */
+    height: auto;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    overflow: visible;
+    text-transform: none;
+    letter-spacing: 0.2px;
+    text-shadow: none;
+    border-radius: 0;
+    clip-path: none;
+    transform: none;
+}
+
+.uds-theme-opt:hover {
+    color: var(--text-2, #b6c9dd);
+    transform: none;
+    box-shadow: none;
+    background: none;
+}
+
+.uds-theme-opt[aria-checked="true"] { color: var(--text, #e8f1fb); }
+
+.uds-theme-opt:focus-visible {
+    outline: 2px solid var(--accent, #00e5ff);
+    outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ responsive - */
+@media (max-width: 780px) {
+    .uds-fb-title,
+    .uds-fb-label { display: none; }
+    .uds-fb-status::before { display: none; }
+}
+
+@media (max-width: 460px) {
+    .uds-fb-status { display: none; }
+}
+
+@media print {
+    .uds-footbar { display: none; }
+    body { padding-bottom: 0; }
+}

@@ -1,0 +1,38 @@
+; acpdriver installation INF (reference template — sign before shipping).
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %AcpProvider%
+DriverVer   = 09/04/2026,1.0.0.0
+CatalogFile = acpdriver.cat
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[Manufacturer]
+%AcpProvider% = AcpDevices,NTamd64
+
+[AcpDevices.NTamd64]
+%AcpDeviceDesc% = AcpInstall,ACP\ACPHelper
+
+[AcpInstall.NT]
+CopyFiles = AcpCopy
+
+[AcpInstall.NT.Services]
+AddService = acpdriver,0x00000002,AcpService
+
+[AcpService]
+DisplayName   = %AcpServiceDesc%
+ServiceType   = 1
+StartType     = 3
+ErrorControl  = 1
+ServiceBinary = %12%\acpdriver.sys
+
+[AcpCopy]
+acpdriver.sys
+
+[Strings]
+AcpProvider     = "ACP"
+AcpDeviceDesc   = "ACP Kernel Helper"
+AcpServiceDesc  = "ACP Kernel Helper (kernel evidence collection)"

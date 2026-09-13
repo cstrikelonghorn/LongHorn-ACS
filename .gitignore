@@ -1,0 +1,51 @@
+# Secrets - never commit these
+.env
+*.secret
+windows/acp-settings.json
+!windows/acp-settings.example.json
+
+# Player data & runtime databases - privacy-sensitive, rebuilt on first run
+reports/*.json
+!reports/.htaccess
+!reports/index.php
+database/*.sqlite
+database/*.sqlite-*
+database/admin_audit.log
+database/ip_geo.json
+database/visitor_stats.json
+database/visitor_online.json
+database/backups/
+ratelimit/
+uploads/
+
+# Build output & installers - use GitHub Releases for binaries
+bin/
+obj/
+publish/
+publish-*/
+windows/bin/
+windows/obj/
+windows/publish/
+windows/publish-3.3/
+windows/publish-3.3 - Copy/
+windows/release/
+windows/launcher/
+tests/desktop/bin/
+tests/desktop/obj/
+*.exe
+*.dll
+*.pdb
+*.zip
+
+# Logs & scratch
+*.log
+tmp/
+scratch/
+
+# Nested repos & release-tooling output
+__pycache__/
+*.pyc
+publication/public-repo/
+publication/artifacts/
+publication/staging/
+publication/verification/

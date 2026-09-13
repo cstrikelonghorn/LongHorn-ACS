@@ -1,0 +1,4 @@
+staging/
+artifacts/
+verification/
+*.log

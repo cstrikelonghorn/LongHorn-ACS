@@ -1,0 +1,911 @@
+{
+  "version": 1,
+  "updated": "2026-09-11",
+  "note": "Known-legitimate Counter-Strike 1.6 client distributions. A large part of the surviving CS 1.6 population does not run the retail Steam client, and several of these mods modify or detour the engine by design. Without this file those players are indistinguishable from cheaters to any scanner that checks module integrity. See clients.php for how a match is applied - matching NEVER suppresses server-side behavioural evidence, and never suppresses findings outside the rule/subject pairs a profile explicitly claims.",
+  "confidenceLevels": {
+    "documented": "Behaviour confirmed from the project's own source or documentation. Markers may still need hashes filled in from a real install.",
+    "inferred": "Client is real and widely used, but its marker filenames and engine behaviour were not verified against an install. Suppression is limited to a downgrade to WARNING and never to INFO."
+  },
+  "profiles": [
+    {
+      "id": "nextclient",
+      "name": "NextClient",
+      "vendor": "CS-NextClient",
+      "url": "https://nextclient.ru/",
+      "source": "https://github.com/CS-NextClient/NextClient",
+      "engineBuild": "8684",
+      "confidence": "documented",
+      "needsVerification": true,
+      "notes": "Open-source CS 1.6 modification built on Steam engine build 8684 (steam_legacy branch). Its repository states that antivirus and heuristic flags are 'false positives caused by runtime detouring of engine functions' - that detouring is exactly what an inline-hook scan reports. Requires a real Steam copy; the project explicitly warns against installing it into the Steam folder because that causes a VAC ban, so a NextClient install is normally a separate copy of the game.",
+      "markers": {
+        "modules": [
+          "nextclient.dll",
+          "next_client.dll",
+          "nitro_api.dll",
+          "nitro_api2.dll"
+        ],
+        "files": [
+          "nextclient.exe",
+          "next_client.exe",
+          "nitro_api.dll"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "comment": "Fill from a verified install: sha256 of hw.dll, client.dll and the marker DLL for each released build. Until populated a match is 'claimed' rather than 'verified' and gets the weaker downgrade.",
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acs-inline-hook"
+          ],
+          "subjectMatch": [
+            "hw.dll",
+            "client.dll",
+            "opengl32.dll",
+            "gameui.dll",
+            "vgui2.dll",
+            "filesystem_stdio.dll"
+          ],
+          "reason": "NextClient installs runtime detours on engine functions by design. Its own repository documents these as heuristic false positives."
+        },
+        {
+          "ruleIds": [
+            "acs-foreign-module"
+          ],
+          "subjectMatch": [
+            "nextclient",
+            "next_client",
+            "nitro_api",
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
+          ],
+          "reason": "NextClient's own modules and Steam API bridge."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
+          ],
+          "reason": "NextClient's Steam API implementation."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "hw.dll",
+          "client.dll",
+          "gameui.dll",
+          "vgui2.dll",
+          "steam_api.dll",
+          "steam_api_c.dll",
+          "steamclient.dll"
+        ],
+        "reason": "Engine, client and Steam API modules carry NextClient's runtime detours, so their .text will not match the file on disk."
+      }
+    },
+    {
+      "id": "goldclient",
+      "name": "GoldClient",
+      "vendor": "GoldClient",
+      "url": "https://goldclient.ru/en/",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "Alternative CS 1.6 client built around up-to-date ReHLDS/ReGameDLL with offline bot support. Adds a large number of custom ConVars (HUD radar, scoreboard, texture filtering, shader/font effects), Discord RPC and demo tooling - which implies renderer and HUD code well beyond the retail client. Marker filenames below are NOT verified against an install and must be confirmed before this profile is trusted.",
+      "markers": {
+        "modules": [
+          "goldclient.dll",
+          "gold_client.dll",
+          "discord-rpc.dll"
+        ],
+        "files": [
+          "goldclient.exe",
+          "gold.exe"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acs-foreign-module"
+          ],
+          "subjectMatch": [
+            "goldclient",
+            "gold_client",
+            "discord-rpc",
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
+          ],
+          "reason": "GoldClient's own modules, Discord RPC integration and Steam API bridge."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
+          ],
+          "reason": "GoldClient's Steam API implementation."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "hw.dll",
+          "client.dll",
+          "steam_api.dll",
+          "steam_api_c.dll",
+          "steamclient.dll"
+        ],
+        "reason": "GoldClient ships its own engine, client and Steam API builds rather than retail binaries."
+      }
+    },
+    {
+      "id": "gsclient",
+      "name": "GSClient",
+      "vendor": "GSClient",
+      "url": "https://gsclient.com/",
+      "engineBuild": "8308",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "CS 1.6 distribution based on Steam build 8308 with an auto-updater, Opus voice codec from Steam, a server command filter and client bug fixes. Downloads land in cstrike_downloads rather than the default location, so file-scan paths differ from a retail install. Marker filenames are NOT verified.",
+      "markers": {
+        "modules": [
+          "gsclient.dll",
+          "gs_client.dll"
+        ],
+        "files": [
+          "gsclient.exe",
+          "gs.exe",
+          "cstrike_downloads"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acs-foreign-module"
+          ],
+          "subjectMatch": [
+            "gsclient",
+            "gs_client",
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
+          ],
+          "reason": "GSClient's own modules and Steam API wrapper."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "steamclient.dll"
+          ],
+          "reason": "GSClient's Steam API implementation."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "hw.dll",
+          "client.dll",
+          "steam_api.dll",
+          "steam_api_c.dll",
+          "steamclient.dll"
+        ],
+        "reason": "GSClient ships a patched engine build (8308) with client-side fixes and Steam API wrapper applied."
+      }
+    },
+    {
+      "id": "warzone",
+      "name": "Warzone Client",
+      "vendor": "Warzone",
+      "url": "",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "Named by the operator as a client in use on their servers. No source or documentation was verified, so this profile carries markers only and must be confirmed against a real install before it is relied on.",
+      "markers": {
+        "modules": [
+          "warzone.dll",
+          "wz_client.dll"
+        ],
+        "files": [
+          "warzone.exe"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acs-foreign-module"
+          ],
+          "subjectMatch": [
+            "warzone",
+            "wz_client"
+          ],
+          "reason": "Warzone client modules."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [],
+        "reason": ""
+      }
+    },
+    {
+      "id": "revemu",
+      "name": "RevEmu / RevCrew",
+      "vendor": "RevCrew",
+      "url": "https://cs.rin.ru/forum/viewtopic.php?f=29&t=55986",
+      "source": "https://github.com/afwn90cj93201nixr2e1re/Reset-Steam-Reg-Keys",
+      "engineBuild": "",
+      "confidence": "documented",
+      "needsVerification": false,
+      "notes": "RevEmu (distributed by RevCrew) is a Steam client emulator that replaces steamclient.dll / steam_api.dll and is configured with rev.ini. Non-Steam CS 1.6 clients use it so the game can present a SteamID to a server. An emulator is a normal part of the non-Steam ecosystem and is not, by itself, a cheat - the server-side behavioural engine still judges how the player actually plays.",
+      "markers": {
+        "modules": [
+          "revemu",
+          "rev_emu",
+          "revloader",
+          "revcrew"
+        ],
+        "files": [
+          "rev.ini",
+          "revemu.dll",
+          "revloader",
+          "revcrew"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": [
+          "4f80c5e97a2c4ab5a192abaa9953029fdaeb035829015ce2f01dcf8cfb73ec48",
+          "a903b462678281ec5a796fab528f7258b18455dc5e42b87389ba96d2359e4777"
+        ]
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "revemu",
+            "rev_emu",
+            "revloader",
+            "revcrew",
+            "rev.ini"
+          ],
+          "reason": "RevEmu / RevCrew's own loader, emulator DLLs and rev.ini, loaded as part of the client."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient",
+            "acp-steam-overlay-not-loaded"
+          ],
+          "reason": "A local, non-retail steamclient.dll is the documented purpose of RevEmu; the missing Steam overlay is a consequence of emulation, not tampering."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll"
+          ],
+          "reason": "RevEmu provides an emulated Steam API wrapper (steamclient.dll / steam_api.dll) for non-Steam CS 1.6 clients."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll"
+        ],
+        "reason": "RevEmu provides an emulated Steam API wrapper (steamclient.dll / steam_api.dll) for non-Steam CS 1.6 clients."
+      }
+    },
+    {
+      "id": "multiemulator",
+      "name": "MultiEmulator",
+      "vendor": "kohtep",
+      "url": "https://github.com/kohtep/MultiEmulator",
+      "source": "https://github.com/kohtep/MultiEmulator",
+      "engineBuild": "",
+      "confidence": "documented",
+      "needsVerification": true,
+      "notes": "MultiEmulator by kohtep is a universal open-source SteamID generator for the GoldSource engine supporting multiple emulators (RevEmu, OldRevEmu, AVSMP, Setti, SteamEmu, SC2009, SmartSteamEmu). Tickets are verified by DProto or ReUnion on the server.",
+      "markers": {
+        "modules": [
+          "multiemulator",
+          "multiemu",
+          "avsmp",
+          "avs.dll"
+        ],
+        "files": [
+          "multiemulator.ini",
+          "multiemulator.dll",
+          "multiemu.dll",
+          "setti.ini",
+          "steam_emu.ini"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "multiemulator",
+            "multiemu",
+            "avsmp",
+            "avs.dll",
+            "setti",
+            "steamemu"
+          ],
+          "reason": "MultiEmulator / SteamID ticket generator module or configuration."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient",
+            "acp-steam-overlay-not-loaded"
+          ],
+          "reason": "MultiEmulator provides emulated Steam authentication for non-Steam CS 1.6 clients."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll",
+            "steam_api_c.dll"
+          ],
+          "reason": "MultiEmulator hooks Steam authentication functions (such as InitiateGameConnection) to generate client tickets."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll",
+          "steam_api_c.dll"
+        ],
+        "reason": "MultiEmulator hooks Steam authentication functions to generate client tickets."
+      }
+    },
+    {
+      "id": "smartsteamemu",
+      "name": "SmartSteamEmu (SSE)",
+      "vendor": "syahmixp / SSE community",
+      "url": "https://cs.rin.ru/forum/viewtopic.php?f=29&t=62935",
+      "source": "https://github.com/MAXBURAOT/SmartSteamEmu",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "SmartSteamEmu (SSE) injects a replacement Steam API through SSELauncher.exe and SmartSteamEmu.ini. It is widely bundled with non-Steam CS 1.6 repacks. Marker filenames are NOT verified against an install; treat a filename-only match as a claim (WARNING), never as proof.",
+      "markers": {
+        "modules": [
+          "smartsteamemu",
+          "sselauncher",
+          "smartsteamloader",
+          "sse_launcher"
+        ],
+        "files": [
+          "smartsteamemu.ini",
+          "sselauncher",
+          "smartsteamloader",
+          "smartsteamemu.dll",
+          "sse.ini"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "smartsteamemu",
+            "sselauncher",
+            "smartsteamloader",
+            "sse"
+          ],
+          "reason": "SmartSteamEmu's launcher and API DLLs, loaded as part of the emulated client."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient",
+            "acp-steam-overlay-not-loaded"
+          ],
+          "reason": "SSE replaces the Steam API by design; the overlay being absent follows from that."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll",
+            "steam_api_c.dll"
+          ],
+          "reason": "SmartSteamEmu provides an emulated Steam API wrapper."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll",
+          "steam_api_c.dll"
+        ],
+        "reason": "SmartSteamEmu provides an emulated Steam API wrapper for non-Steam clients."
+      }
+    },
+    {
+      "id": "goldberg",
+      "name": "Goldberg Steam Emulator",
+      "vendor": "Mr_Goldberg / gbe_fork",
+      "url": "https://gitlab.com/Mr_Goldberg/goldberg_emulator",
+      "source": "https://github.com/otavepto/gbe_fork",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "Goldberg is an open-source Steamworks emulator. It ships a replacement steam_api.dll alongside a steam_settings folder and is used by many repacked editions. Its own DLL is unsigned, which a generic foreign/unsigned-module rule would otherwise flag.",
+      "markers": {
+        "modules": [
+          "goldberg",
+          "libsteam_api",
+          "gbe"
+        ],
+        "files": [
+          "goldberg",
+          "steam_settings",
+          "libsteam_api",
+          "steam_emu.ini"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "goldberg",
+            "libsteam_api",
+            "gbe",
+            "steam_settings"
+          ],
+          "reason": "Goldberg's emulator DLL and its steam_settings data folder."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient",
+            "acp-steam-overlay-not-loaded"
+          ],
+          "reason": "Goldberg is a Steam API emulator; the overlay is intentionally absent."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll",
+            "steam_api_c.dll"
+          ],
+          "reason": "Goldberg provides an emulated Steam API wrapper."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll",
+          "steam_api_c.dll"
+        ],
+        "reason": "Goldberg provides an emulated Steam API wrapper for non-Steam clients."
+      }
+    },
+    {
+      "id": "creamapi",
+      "name": "CreamAPI",
+      "vendor": "CreamAPI",
+      "url": "",
+      "source": "",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "CreamAPI is an unlocker/emulator configured entirely through cream_api.ini next to a replacement steam_api.dll. It is not a cheat; marker filenames are unverified.",
+      "markers": {
+        "modules": [
+          "creamapi"
+        ],
+        "files": [
+          "cream_api.ini",
+          "creamapi",
+          "cream_api.dll"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "creamapi",
+            "cream_api"
+          ],
+          "reason": "CreamAPI's loader and configuration file."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient"
+          ],
+          "reason": "CreamAPI operates by replacing the Steam API wrapper."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll",
+            "steam_api_c.dll"
+          ],
+          "reason": "CreamAPI operates by replacing the Steam API wrapper."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll",
+          "steam_api_c.dll"
+        ],
+        "reason": "CreamAPI replaces the Steam API wrapper for non-Steam clients."
+      }
+    },
+    {
+      "id": "greenluma",
+      "name": "GreenLuma",
+      "vendor": "GreenLuma / GreenLuma Reborn",
+      "url": "",
+      "source": "",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "GreenLuma injects Steam via DLLInjector.exe / GreenLuma.exe. It is a Steam-enablement tool rather than a game cheat; markers are unverified and deliberately specific to avoid matching unrelated 'luma' strings.",
+      "markers": {
+        "modules": [
+          "greenluma"
+        ],
+        "files": [
+          "greenluma",
+          "dllinjector",
+          "greenluma_reborn"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "greenluma",
+            "dllinjector"
+          ],
+          "reason": "GreenLuma's injector and loader."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient"
+          ],
+          "reason": "GreenLuma enables Steam content through injection rather than a retail login."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll",
+            "steam_api_c.dll"
+          ],
+          "reason": "GreenLuma injects Steam API wrappers."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll",
+          "steam_api_c.dll"
+        ],
+        "reason": "GreenLuma operates by injecting Steam wrappers."
+      }
+    },
+    {
+      "id": "platinum",
+      "name": "Platinum Steam Emulator",
+      "vendor": "Platinum",
+      "url": "",
+      "source": "",
+      "engineBuild": "",
+      "confidence": "inferred",
+      "needsVerification": true,
+      "notes": "Platinum is a Steam emulator configured by platinum.ini. Markers are intentionally narrow ('.ini' / '_emu') because 'platinum' is a common word that could appear in unrelated paths.",
+      "markers": {
+        "modules": [
+          "platinum_emu",
+          "platinumemu"
+        ],
+        "files": [
+          "platinum.ini",
+          "platinum_emu",
+          "platinumemu"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "platinum_emu",
+            "platinumemu"
+          ],
+          "reason": "Platinum's emulator module."
+        },
+        {
+          "ruleIds": [
+            "acp-steam-emulator-artifact",
+            "acp-local-steamclient"
+          ],
+          "reason": "Platinum emulates the Steam client API."
+        },
+        {
+          "ruleIds": [
+            "acp-module-code-patched"
+          ],
+          "subjectMatch": [
+            "steamclient.dll",
+            "steam_api.dll",
+            "steam_api_c.dll"
+          ],
+          "reason": "Platinum emulates the Steam client API."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "steamclient.dll",
+          "steam_api.dll",
+          "steam_api_c.dll"
+        ],
+        "reason": "Platinum emulates the Steam client API for non-Steam clients."
+      }
+    },
+    {
+      "id": "rehlds-platform",
+      "name": "ReHLDS / DProto server platform",
+      "vendor": "ReHLDS project / Crock",
+      "url": "https://github.com/rehlds/ReHLDS",
+      "source": "https://github.com/rehlds/ReUnion",
+      "engineBuild": "",
+      "confidence": "documented",
+      "needsVerification": false,
+      "notes": "Server-side ReHLDS platform and its companion plugins: ReUnion (protocol 47/48 non-steam bridge, reunion_mm.dll), DProto (protocol 47/48 non-steam bridge, dproto.dll), ReAPI (reapi_amxx), ReGameDLL and the AMX Mod X / Metamod loader stack. These are server components that legitimately load into a listen-server hl.exe or live in cstrike/addons, so they must not be reported as injected cheats. This profile explains ONLY the named platform files - it never blanket-allows anything else, and the server-side behavioural engine is unaffected. Client-side engine detours are deliberately NOT explained by this profile: these are server components, and hw.dll/client.dll hooks are where GoldSrc wallhacks and aimbots live.",
+      "markers": {
+        "modules": [
+          "reunion_mm",
+          "dproto",
+          "dproto_mm",
+          "reapi_amxx",
+          "amxmodx_mm",
+          "regamedll_mm",
+          "metamod"
+        ],
+        "files": [
+          "addons/reunion/",
+          "reunion.cfg",
+          "reunion_mm.dll",
+          "reunion_mm_i386.so",
+          "addons/dproto/",
+          "dproto.cfg",
+          "dproto.dll",
+          "dproto_i386.so",
+          "reapi_amxx",
+          "amxmodx_mm",
+          "addons/amxmodx/",
+          "addons/metamod/",
+          "regamedll",
+          "swds.dll"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "reunion_mm",
+            "dproto",
+            "dproto_mm",
+            "reapi_amxx",
+            "amxmodx_mm",
+            "regamedll",
+            "metamod",
+            "swds.dll",
+            "addons\\reunion",
+            "addons/reunion",
+            "addons\\dproto",
+            "addons/dproto",
+            "dproto.cfg",
+            "reunion.cfg"
+          ],
+          "reason": "ReHLDS / ReUnion / DProto / ReAPI / AMX Mod X / Metamod are server plugins that load into a listen server's hl.exe by design."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [
+          "swds.dll",
+          "mp.dll"
+        ],
+        "reason": "ReHLDS replaces swds.dll and ReGameDLL replaces mp.dll; the server binaries will not match a retail file on disk."
+      }
+    },
+    {
+      "id": "longhorn-cs16-pro",
+      "name": "LongHorn Counter-Strike 1.6 Pro",
+      "vendor": "LongHorn",
+      "url": "",
+      "engineBuild": "",
+      "confidence": "documented",
+      "needsVerification": true,
+      "notes": "The operator's own CS 1.6 distribution, which ships the LHGUI menu/rcon system. Its LHGUI configs use alias+wait cycles to drive menus, which the static config analyser reads as a bhop-style wait loop. Two deliberate limits: (1) only configs under LHGUI/ are explained, so a wait loop anywhere else in cstrike/ is still reported; (2) the muzzIeflash sprite finding is NOT explained. That file (capital I instead of l) is the known no-muzzle-flash swap and it confers a real visual advantage, so it stays a finding until you decide whether it belongs in the distribution - if it ships, every other scanner will flag your players for it too. This profile can reach a full INFO downgrade as soon as knownHashes.sha256 is populated: run tools/hash_client_build.php against a clean install to generate them. It is the one profile you can verify completely, because you build it.",
+      "markers": {
+        "modules": [],
+        "files": [
+          "LHGUI/",
+          "lhgui/"
+        ],
+        "minMatches": 1
+      },
+      "knownHashes": {
+        "comment": "sha256 of hw.dll, client.dll and the LHGUI marker files for each released build. Generate with: php tools/hash_client_build.php \"C:\\Program Files (x86)\\LongHorn\\Counter-Strike 1.6 Pro\"",
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acp-script-wait-loop",
+            "acp-script-alias-cycle"
+          ],
+          "subjectMatch": [
+            "LHGUI/",
+            "lhgui/"
+          ],
+          "reason": "LHGUI drives its in-game menus and rcon match presets with alias+wait cycles. That is menu automation in the distribution's own config tree, not a movement script bound to a key."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [],
+        "reason": "Deliberately empty. A LongHorn build's engine hash being unknown is a corpus question; it is never a reason to allow its running code to differ from its own file on disk."
+      }
+    },
+    {
+      "id": "nonsteam-repack",
+      "name": "Non-Steam repack",
+      "vendor": "various",
+      "url": "https://down-cs.su/editions/",
+      "engineBuild": "",
+      "confidence": "documented",
+      "needsVerification": false,
+      "notes": "Generic profile for the large family of repacked CS 1.6 editions (down-cs.su and similar). These bundle offline bots, custom menus and localisation on top of an unofficial engine build. They are not a cheat, but their hw.dll/client.dll hashes will never match a retail install and they commonly ship bot DLLs that a foreign-module rule would otherwise flag. This profile deliberately explains ONLY the well-known legitimate additions by name - it does not blanket-allow anything found in a non-Steam install.",
+      "markers": {
+        "modules": [],
+        "files": [],
+        "minMatches": 1,
+        "noSteamBuild": true
+      },
+      "knownHashes": {
+        "sha256": []
+      },
+      "explains": [
+        {
+          "ruleIds": [
+            "acs-foreign-module",
+            "acp-foreign-module"
+          ],
+          "subjectMatch": [
+            "podbot",
+            "pobot_mm",
+            "zbot",
+            "czbot",
+            "mp3dec.asi",
+            "mssv12.asi",
+            "mssv29.asi",
+            "reunion_mm",
+            "dproto",
+            "dproto_mm",
+            "reapi_amxx",
+            "amxmodx_mm",
+            "regamedll",
+            "metamod",
+            "swds.dll",
+            "revemu",
+            "rev_emu",
+            "revloader",
+            "revcrew",
+            "multiemulator",
+            "multiemu",
+            "avsmp",
+            "avs.dll",
+            "smartsteamemu",
+            "sselauncher",
+            "goldberg",
+            "creamapi",
+            "greenluma",
+            "platinum_emu",
+            "steam_api.dll",
+            "steam_api_c.dll",
+            "Steam.dll",
+            "FileSystem_Steam.dll",
+            "setti.ini",
+            "steamemu.ini"
+          ],
+          "reason": "Offline bot, audio, bundled Steam-emulator and open-source ReHLDS server modules shipped with practically every non-Steam edition."
+        }
+      ],
+      "moduleIntegrity": {
+        "allowModified": [],
+        "reason": "Deliberately empty. A repack's engine hash being unknown is handled by the corpus as an unknown artifact, not by allowing its code to differ from its own file on disk - a detour inside a repack's hw.dll is still a detour."
+      }
+    }
+  ]
+}

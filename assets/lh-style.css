@@ -1,0 +1,1548 @@
+/* ============================================================================
+   LH STYLE — BROADCAST TELEMETRY SKIN
+   Unreal Demo Scanner · alternate theme (data-uds-theme="lh")
+   ----------------------------------------------------------------------------
+   Where the default theme is a cyberpunk cyberdeck, LH Style is the tournament
+   broadcast: the anti-cheat overlay a competitive CS production would cut to
+   between rounds. The rules it is built on:
+
+     GROUND      Warm graphite, never pure black and never navy. Blue-black is
+                 the tell of a generic dark UI; a warm ground reads as film.
+     INK         Bone white with a warm cast. Paired against graphite it gives
+                 the whole surface a printed, broadcast-package feel.
+     SIGNATURE   Longhorn burnt orange. It owns the chrome — rules, tabs,
+                 focus, interaction — and nothing else. Status colour is
+                 reserved strictly for data, so a red on screen always means
+                 a finding rather than decoration.
+     GEOMETRY    One cut corner, never four. Every panel is a square plate with
+                 a single 14px notch and a 3px ember index tab, like a rack
+                 unit in an equipment list.
+     NUMERALS    Oversized, condensed, tabular. Figures are the hero of an
+                 anti-cheat report, so they are set as display type.
+     TEXTURE     Film grain and vignette instead of CRT scanlines.
+
+   Every selector is scoped to html[data-uds-theme="lh"], which also lifts it
+   above the page-level <style> blocks without a single !important.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ------------------------------------------------------------------ tokens */
+html[data-uds-theme="lh"] {
+    color-scheme: dark;
+
+    /* Ground — warm graphite ladder */
+    --bg:          #0a0b0d;
+    --bg-2:        #0e1013;
+    --surface:     #131519;
+    --surface-2:   #191c22;
+    --surface-3:   #22262e;
+    --glass:       rgba(255, 226, 200, 0.028);
+
+    /* Lines — warm neutral, brand lines are deliberate */
+    --line:        rgba(233, 216, 198, 0.13);
+    --line-soft:   rgba(233, 216, 198, 0.07);
+    --line-strong: rgba(255, 106, 31, 0.46);
+
+    /* Ink — bone, warm cast */
+    --text:        #f4f0ea;
+    --text-2:      #c8c1b6;
+    --muted:       #92897c;
+    --muted-deep:  #6b6459;
+
+    /* Signature — Longhorn burnt orange, screen-bright */
+    --ember:       #ff6a1f;
+    --ember-hi:    #ff9a4d;
+    --ember-deep:  #bf5700;
+    --accent:      var(--ember);
+    --accent-2:    var(--ember-hi);
+    --accent-dim:  rgba(255, 106, 31, 0.14);
+    --accent-glow: rgba(255, 106, 31, 0.5);
+
+    /* Status — reserved for data only */
+    --danger:      #ff2e4c;
+    --danger-dim:  rgba(255, 46, 76, 0.14);
+    --warn:        #ffc53d;
+    --warn-dim:    rgba(255, 197, 61, 0.13);
+    --ok:          #a8ff3e;
+    --ok-dim:      rgba(168, 255, 62, 0.12);
+    --ice:         #56d9f0;
+    --amber:       #ffc53d;
+    --amber-dim:   rgba(255, 197, 61, 0.13);
+
+    /* Type */
+    --f-display: 'Saira Condensed', 'Oswald', 'Segoe UI', sans-serif;
+    --f-ui:      'Space Grotesk', 'Segoe UI', Arial, sans-serif;
+    --f-mono:    'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+    /* Legacy aliases kept bound so untouched page CSS follows the theme */
+    --panel:     var(--surface);
+    --panel-2:   var(--surface-2);
+    --line-hot:  rgba(255, 46, 76, 0.6);
+    --cs-yellow: var(--warn);
+    --cs-yellow-dim: var(--warn-dim);
+
+    --r: 0px;
+    --notch: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+    --chamfer: var(--notch);
+    --shadow:    0 12px 34px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 28px 80px rgba(0, 0, 0, 0.75);
+
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* -------------------------------------------------------------------- base */
+html[data-uds-theme="lh"] body {
+    background: var(--bg);
+    /* Warm key light top-left, ember rim bottom-right — a lit studio set
+       rather than the default's symmetrical neon wash. */
+    background-image:
+        radial-gradient(ellipse 60% 45% at 12% -6%,  rgba(255, 138, 60, 0.075), transparent 66%),
+        radial-gradient(ellipse 48% 38% at 92% 4%,   rgba(255, 46, 76, 0.045),  transparent 62%),
+        radial-gradient(ellipse 70% 50% at 50% 108%, rgba(255, 106, 31, 0.06),  transparent 68%);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: var(--f-ui);
+    font-size: 15px;
+    line-height: 1.62;
+    letter-spacing: 0;
+    font-feature-settings: "ss01", "cv01";
+}
+
+/* Grain — the 2026 replacement for scanlines. Static, monochrome, very low
+   alpha; it kills the flat-vector look without touching legibility. */
+html[data-uds-theme="lh"] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.32'/%3E%3C/svg%3E");
+    background-size: 140px 140px;
+    mask-image: none;
+    -webkit-mask-image: none;
+}
+
+/* Vignette — pulls the eye to the centre column. */
+html[data-uds-theme="lh"] body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 1;
+    background: radial-gradient(ellipse 78% 62% at 50% 45%,
+        transparent 55%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+/* -------------------------------------------------------------------- type */
+html[data-uds-theme="lh"] h1,
+html[data-uds-theme="lh"] h2,
+html[data-uds-theme="lh"] h3,
+html[data-uds-theme="lh"] h4 {
+    font-family: var(--f-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text);
+    line-height: 1.05;
+}
+
+html[data-uds-theme="lh"] h1 {
+    font-size: clamp(32px, 5vw, 60px);
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+html[data-uds-theme="lh"] h2 { font-size: clamp(20px, 2.3vw, 27px); letter-spacing: 0.8px; }
+html[data-uds-theme="lh"] h3 { font-size: 17px; letter-spacing: 1px; }
+
+/* Body copy stays sentence case and neutral — the readability floor the
+   default theme established is not negotiable in either skin. */
+html[data-uds-theme="lh"] p {
+    color: var(--text-2);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+html[data-uds-theme="lh"] a { color: var(--ember-hi); }
+html[data-uds-theme="lh"] a:hover { color: var(--ember); }
+
+/* Tabular figures everywhere a number can appear. */
+html[data-uds-theme="lh"] .sc-value,
+html[data-uds-theme="lh"] .stat strong,
+html[data-uds-theme="lh"] .result-metric strong,
+html[data-uds-theme="lh"] .threat-score > strong,
+html[data-uds-theme="lh"] td.mono,
+html[data-uds-theme="lh"] .hits,
+html[data-uds-theme="lh"] .finding-events {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+/* ============================== HEADER / BRAND ============================ */
+html[data-uds-theme="lh"] header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 22px;
+    margin-bottom: 30px;
+}
+
+/* Replace the default's glowing full-width gradient with a broadcast
+   lower-third: a solid ember segment that deliberately stops short. */
+html[data-uds-theme="lh"] header::after {
+    background: var(--ember);
+    box-shadow: none;
+    width: 168px;
+    height: 3px;
+    bottom: -2px;
+}
+
+html[data-uds-theme="lh"] .brand {
+    border-left: 3px solid var(--ember);
+    background: linear-gradient(100deg,
+        rgba(255, 106, 31, 0.09) 0%, rgba(255, 106, 31, 0.02) 38%, transparent 72%);
+    padding: 0 30px;
+}
+
+/* Stencil slug, set as a monospace equipment label rather than neon text. */
+html[data-uds-theme="lh"] .brand::before {
+    content: "LH//DEMO-THREAT-SCANNER \2022  REV 2026.1";
+    font-family: var(--f-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 2.2px;
+    color: var(--muted);
+    opacity: 1;
+    top: 14px;
+    right: 18px;
+}
+
+html[data-uds-theme="lh"] .brand::after {
+    background: linear-gradient(90deg, var(--ember), transparent 70%);
+    height: 1px;
+}
+
+html[data-uds-theme="lh"] .brand h1 {
+    color: var(--text);
+    text-shadow: none;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+html[data-uds-theme="lh"] .brand p {
+    font-family: var(--f-mono);
+    font-size: 11.5px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .status {
+    border-left: 1px solid var(--line);
+    padding-left: 22px;
+    font-family: var(--f-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.3px;
+}
+
+html[data-uds-theme="lh"] .status span { color: var(--text-2); }
+
+/* The default prefixes each line with "// "; swap for a ledger bullet that
+   suits the equipment-list read. */
+html[data-uds-theme="lh"] .status span::before {
+    content: "\2022  ";
+    color: var(--ember);
+    opacity: 1;
+}
+
+/* ================================= PLATES ================================ */
+/* One notched corner, one ember index tab. Applied to every panel surface so
+   the page reads as a rack of instrument plates rather than floating cards. */
+html[data-uds-theme="lh"] .summary,
+html[data-uds-theme="lh"] .message,
+html[data-uds-theme="lh"] .empty-state,
+html[data-uds-theme="lh"] .upload-area,
+html[data-uds-theme="lh"] .recent-scans,
+html[data-uds-theme="lh"] .notes-panel,
+html[data-uds-theme="lh"] .player-panel,
+html[data-uds-theme="lh"] .compat-wrap,
+html[data-uds-theme="lh"] .collapse-panel,
+html[data-uds-theme="lh"] .timeline-wrap,
+html[data-uds-theme="lh"] .bookmark-panel {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    clip-path: var(--notch);
+    box-shadow: var(--shadow);
+}
+
+/* A clip-path cannot draw a border along the cut, so a gradient hairline
+   supplies the diagonal rule that makes the notch read as intentional. */
+html[data-uds-theme="lh"] .summary::after,
+html[data-uds-theme="lh"] .upload-area::after,
+html[data-uds-theme="lh"] .recent-scans::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 21px;
+    height: 21px;
+    pointer-events: none;
+    background: linear-gradient(135deg,
+        transparent 49%, var(--line) 50%, var(--line) calc(50% + 1px), transparent calc(50% + 1px));
+}
+
+html[data-uds-theme="lh"] .recent-scans > h2,
+html[data-uds-theme="lh"] .recent-scans h2 {
+    font-family: var(--f-display);
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text);
+}
+
+html[data-uds-theme="lh"] .recent-scans > h2::before {
+    background: var(--ember);
+    box-shadow: none;
+}
+
+/* ================================ BUTTONS ================================ */
+html[data-uds-theme="lh"] button,
+html[data-uds-theme="lh"] .btn,
+html[data-uds-theme="lh"] .xc-btn,
+html[data-uds-theme="lh"] .scan-action,
+html[data-uds-theme="lh"] .lookup-btn,
+html[data-uds-theme="lh"] .intel-action {
+    font-family: var(--f-ui);
+    font-weight: 600;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    border-radius: 0;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+    transition: transform 0.18s var(--ease-out),
+                box-shadow 0.18s var(--ease-out),
+                background 0.18s var(--ease-out),
+                color 0.18s var(--ease-out);
+}
+
+/* Exclude UI micro-controls, tabs, modals, and Sample Lab utility buttons from the polygon chamfer cut */
+html[data-uds-theme="lh"] button.uds-sg-btn,
+html[data-uds-theme="lh"] button.uds-tab-btn,
+html[data-uds-theme="lh"] button.uds-seg-tab,
+html[data-uds-theme="lh"] button.uds-copy-btn,
+html[data-uds-theme="lh"] button.uds-util-btn,
+html[data-uds-theme="lh"] button.uds-modal-close,
+html[data-uds-theme="lh"] button.uds-run-btn,
+html[data-uds-theme="lh"] button.uds-ban-submit-btn,
+html[data-uds-theme="lh"] button.uds-report-open-btn,
+html[data-uds-theme="lh"] button.uds-discard-btn,
+html[data-uds-theme="lh"] button.uds-modal-btn,
+html[data-uds-theme="lh"] button.uds-theme-opt,
+html[data-uds-theme="lh"] #sample-lab button,
+html[data-uds-theme="lh"] #sample-report-modal button,
+html[data-uds-theme="lh"] .suggest-list button,
+html[data-uds-theme="lh"] .sample-report-summary button,
+html[data-uds-theme="lh"] .uds-forge-accordion button {
+    clip-path: none !important;
+    border-radius: 4px;
+}
+
+html[data-uds-theme="lh"] button.uds-sg-btn {
+    clip-path: none !important;
+    min-height: unset !important;
+    height: 24px !important;
+    padding: 0 10px !important;
+    font: 700 11px/22px var(--f-mono, monospace) !important;
+    letter-spacing: 0.4px !important;
+    text-transform: uppercase !important;
+    color: var(--accent, #00f3ff) !important;
+    background: rgba(0, 243, 255, 0.08) !important;
+    background-image: none !important;
+    border: 1px solid rgba(0, 243, 255, 0.28) !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+}
+
+html[data-uds-theme="lh"] button.uds-sg-btn:hover {
+    background: rgba(0, 243, 255, 0.22) !important;
+    background-image: none !important;
+    border-color: var(--accent, #00f3ff) !important;
+    color: #fff !important;
+    box-shadow: 0 0 10px rgba(0, 243, 255, 0.35) !important;
+    transform: none !important;
+}
+
+html[data-uds-theme="lh"] button.uds-ban-submit-btn {
+    clip-path: none !important;
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 8px 18px !important;
+    font: 700 12px var(--f-display, sans-serif) !important;
+    letter-spacing: 0.8px !important;
+    text-transform: uppercase !important;
+    color: #fff !important;
+    background: linear-gradient(135deg, #ff0055, #c81b3c) !important;
+    background-image: linear-gradient(135deg, #ff0055, #c81b3c) !important;
+    border: 1px solid rgba(255, 0, 85, 0.6) !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 12px rgba(255, 0, 85, 0.3) !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+html[data-uds-theme="lh"] button.uds-ban-submit-btn:hover {
+    background: linear-gradient(135deg, #ff2266, #e11d48) !important;
+    background-image: linear-gradient(135deg, #ff2266, #e11d48) !important;
+    box-shadow: 0 0 18px rgba(255, 0, 85, 0.5) !important;
+    transform: translateY(-1px) !important;
+}
+
+html[data-uds-theme="lh"] button.uds-report-open-btn {
+    clip-path: none !important;
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 8px 18px !important;
+    font: 700 12px var(--f-display, sans-serif) !important;
+    letter-spacing: 0.8px !important;
+    text-transform: uppercase !important;
+    color: #000 !important;
+    background: linear-gradient(135deg, var(--accent, #00f3ff), #00a8ff) !important;
+    background-image: linear-gradient(135deg, var(--accent, #00f3ff), #00a8ff) !important;
+    border: 1px solid var(--accent, #00f3ff) !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 10px rgba(0, 243, 255, 0.25) !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+}
+
+html[data-uds-theme="lh"] button.uds-discard-btn {
+    clip-path: none !important;
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 8px 16px !important;
+    font: 700 12px var(--f-display, sans-serif) !important;
+    letter-spacing: 0.8px !important;
+    text-transform: uppercase !important;
+    color: var(--text-2) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    background-image: none !important;
+    border: 1px solid var(--line-soft) !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+/* Primary: solid ember with graphite ink, like a broadcast action key. */
+html[data-uds-theme="lh"] #scan-btn,
+html[data-uds-theme="lh"] button[type="submit"] {
+    background-image: linear-gradient(135deg, var(--ember-hi), var(--ember) 55%, var(--ember-deep));
+    background-color: var(--ember);
+    color: #17100a;
+    border: 0;
+    text-shadow: none;
+    box-shadow: 0 6px 20px rgba(255, 106, 31, 0.26);
+}
+
+html[data-uds-theme="lh"] #scan-btn:hover,
+html[data-uds-theme="lh"] button[type="submit"]:hover {
+    box-shadow: 0 10px 32px rgba(255, 106, 31, 0.42);
+    transform: translateY(-2px);
+}
+
+/* Secondary: hairline plate that fills with ember on hover. */
+html[data-uds-theme="lh"] .ghost,
+html[data-uds-theme="lh"] .xc-btn.ghost,
+html[data-uds-theme="lh"] button.ghost,
+html[data-uds-theme="lh"] .lookup-btn,
+html[data-uds-theme="lh"] .rep-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-2);
+    box-shadow: none;
+}
+
+html[data-uds-theme="lh"] .ghost:hover,
+html[data-uds-theme="lh"] .xc-btn.ghost:hover,
+html[data-uds-theme="lh"] button.ghost:hover,
+html[data-uds-theme="lh"] .lookup-btn:hover,
+html[data-uds-theme="lh"] .rep-btn:hover {
+    background: var(--accent-dim);
+    border-color: var(--ember);
+    color: var(--text);
+    box-shadow: none;
+}
+
+html[data-uds-theme="lh"] .xc-btn.ok,
+html[data-uds-theme="lh"] .btn.ok,
+html[data-uds-theme="lh"] .scan-action.play {
+    background: linear-gradient(135deg, var(--ok), #7fd41f);
+    color: #101a02;
+}
+
+html[data-uds-theme="lh"] .xc-btn.warn,
+html[data-uds-theme="lh"] .btn.warn {
+    background: linear-gradient(135deg, var(--warn), #d89a00);
+    color: #1a1400;
+}
+
+html[data-uds-theme="lh"] .danger,
+html[data-uds-theme="lh"] .btn.danger,
+html[data-uds-theme="lh"] .xc-btn.danger {
+    background: linear-gradient(135deg, var(--danger), #b81833);
+    color: #fff;
+}
+
+html[data-uds-theme="lh"] button:focus-visible,
+html[data-uds-theme="lh"] a:focus-visible,
+html[data-uds-theme="lh"] input:focus-visible,
+html[data-uds-theme="lh"] select:focus-visible,
+html[data-uds-theme="lh"] textarea:focus-visible {
+    outline: 2px solid var(--ember);
+    outline-offset: 2px;
+}
+
+/* ============================ FORMS / DROP ZONE ========================== */
+html[data-uds-theme="lh"] input,
+html[data-uds-theme="lh"] select,
+html[data-uds-theme="lh"] textarea,
+html[data-uds-theme="lh"] .note-textarea {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    color: var(--text);
+    font-family: var(--f-ui);
+}
+
+html[data-uds-theme="lh"] input:focus,
+html[data-uds-theme="lh"] select:focus,
+html[data-uds-theme="lh"] textarea:focus,
+html[data-uds-theme="lh"] .note-textarea:focus {
+    border-color: var(--ember);
+    box-shadow: 0 0 0 3px rgba(255, 106, 31, 0.16);
+}
+
+html[data-uds-theme="lh"] .drop-zone {
+    background:
+        radial-gradient(circle at 50% 36%, rgba(255, 106, 31, 0.07), transparent 66%),
+        linear-gradient(180deg, rgba(22, 19, 17, 0.92), rgba(12, 10, 9, 0.98));
+    border: 1px dashed rgba(233, 216, 198, 0.24);
+    border-radius: 4px;
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5), 0 12px 30px rgba(0, 0, 0, 0.4);
+    transition: all 0.24s var(--ease-out);
+}
+
+html[data-uds-theme="lh"] .drop-zone:hover,
+html[data-uds-theme="lh"] .drop-zone.dragover {
+    border-color: var(--ember);
+    border-style: solid;
+    background:
+        radial-gradient(circle at 50% 36%, rgba(255, 106, 31, 0.18), transparent 70%),
+        linear-gradient(180deg, rgba(30, 22, 16, 0.94), rgba(14, 11, 8, 0.98));
+    box-shadow: inset 0 0 60px rgba(255, 106, 31, 0.14), 0 0 35px rgba(255, 106, 31, 0.22);
+}
+
+html[data-uds-theme="lh"] .drop-zone::before {
+    background-image:
+        linear-gradient(rgba(255, 106, 31, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 106, 31, 0.04) 1px, transparent 1px);
+}
+
+html[data-uds-theme="lh"] .dz-tagline {
+    background: rgba(255, 106, 31, 0.08);
+    border-color: rgba(255, 106, 31, 0.28);
+}
+
+html[data-uds-theme="lh"] .dz-status-beacon {
+    background: var(--ember);
+    box-shadow: 0 0 10px var(--ember);
+}
+
+html[data-uds-theme="lh"] .dz-corner {
+    border-color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .dz-sweep {
+    background: linear-gradient(90deg, transparent, var(--ember), #fff, var(--ember), transparent);
+    box-shadow: 0 0 12px var(--ember);
+}
+
+html[data-uds-theme="lh"] .dz-radar-ring.outer {
+    border-color: rgba(255, 106, 31, 0.35);
+}
+
+html[data-uds-theme="lh"] .dz-radar-ring.inner {
+    border-color: rgba(255, 106, 31, 0.25);
+}
+
+html[data-uds-theme="lh"] .drop-zone:hover .dz-radar-ring.inner {
+    border-color: var(--ember);
+    box-shadow: 0 0 14px rgba(255, 106, 31, 0.3);
+}
+
+html[data-uds-theme="lh"] .dz-icon {
+    color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .dz-icon svg {
+    filter: drop-shadow(0 0 10px rgba(255, 106, 31, 0.5));
+}
+
+html[data-uds-theme="lh"] .drop-text {
+    font-family: var(--f-display);
+    font-size: 17px;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text);
+}
+
+html[data-uds-theme="lh"] .dz-badge {
+    background: rgba(18, 14, 11, 0.9);
+    border-color: rgba(233, 216, 198, 0.18);
+}
+
+html[data-uds-theme="lh"] .dz-badge code {
+    color: var(--ember-hi);
+    background: rgba(255, 106, 31, 0.15);
+}
+
+html[data-uds-theme="lh"] .drop-file-name {
+    font-family: var(--f-mono);
+    color: var(--ember-hi);
+}
+
+/* ================================= STATS ================================= */
+/* Figures are the hero of an anti-cheat report, so they are set as display
+   type: oversized, condensed, tabular, with a measured rule beneath. */
+html[data-uds-theme="lh"] .stat-card,
+html[data-uds-theme="lh"] .stat,
+html[data-uds-theme="lh"] .intel,
+html[data-uds-theme="lh"] .result-metric {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ember);
+    border-radius: 0;
+    overflow: hidden;
+    transition: border-color 0.22s var(--ease-out),
+                transform 0.22s var(--ease-out),
+                background 0.22s var(--ease-out);
+}
+
+html[data-uds-theme="lh"] .stat-card:hover,
+html[data-uds-theme="lh"] .intel:hover,
+html[data-uds-theme="lh"] .result-metric:hover {
+    transform: translateY(-2px);
+    background: var(--surface-2);
+    border-left-color: var(--ember-hi);
+}
+
+html[data-uds-theme="lh"] .sc-label,
+html[data-uds-theme="lh"] .stat span,
+html[data-uds-theme="lh"] .intel span,
+html[data-uds-theme="lh"] .result-metric span {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .sc-value,
+html[data-uds-theme="lh"] .stat strong,
+html[data-uds-theme="lh"] .result-metric strong {
+    font-family: var(--f-display);
+    font-weight: 800;
+    font-size: clamp(30px, 3.6vw, 44px);
+    letter-spacing: -1px;
+    line-height: 0.95;
+    color: var(--text);
+    text-shadow: none;
+}
+
+/* The top-border tint the default uses reads as decoration; move the status
+   colour onto the index tab so it carries meaning at a glance. */
+html[data-uds-theme="lh"] .stat-card.danger,
+html[data-uds-theme="lh"] .stat-card.detected { border-left-color: var(--danger); }
+html[data-uds-theme="lh"] .stat-card.warn,
+html[data-uds-theme="lh"] .stat-card.warning { border-left-color: var(--warn); }
+html[data-uds-theme="lh"] .stat-card.ok,
+html[data-uds-theme="lh"] .stat-card.clean { border-left-color: var(--ok); }
+html[data-uds-theme="lh"] .stat-card.accent { border-left-color: var(--ice); }
+
+html[data-uds-theme="lh"] .stat-card.danger .sc-value,
+html[data-uds-theme="lh"] .stat-card.detected .sc-value { color: var(--danger); }
+html[data-uds-theme="lh"] .stat-card.warn .sc-value,
+html[data-uds-theme="lh"] .stat-card.warning .sc-value { color: var(--warn); }
+html[data-uds-theme="lh"] .stat-card.ok .sc-value,
+html[data-uds-theme="lh"] .stat-card.clean .sc-value { color: var(--ok); }
+
+html[data-uds-theme="lh"] .intel strong,
+html[data-uds-theme="lh"] .result-intel-grid .intel strong {
+    font-family: var(--f-ui);
+    font-weight: 600;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ============================ RESULT / VERDICT =========================== */
+html[data-uds-theme="lh"] .summary.result-shell {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0;
+}
+
+html[data-uds-theme="lh"] .result-hero {
+    border-radius: 0;
+    border-bottom: 1px solid var(--line);
+}
+
+html[data-uds-theme="lh"] .result-hero.detected { --result-tone: var(--danger); }
+html[data-uds-theme="lh"] .result-hero.warning  { --result-tone: var(--warn); }
+html[data-uds-theme="lh"] .result-hero.ok       { --result-tone: var(--ok); }
+
+/* A single wide wash from the verdict colour; no competing neon. */
+html[data-uds-theme="lh"] .result-hero.detected {
+    background: linear-gradient(105deg, rgba(255, 46, 76, 0.16), transparent 58%);
+}
+html[data-uds-theme="lh"] .result-hero.warning {
+    background: linear-gradient(105deg, rgba(255, 197, 61, 0.14), transparent 58%);
+}
+html[data-uds-theme="lh"] .result-hero.ok {
+    background: linear-gradient(105deg, rgba(168, 255, 62, 0.12), transparent 58%);
+}
+
+html[data-uds-theme="lh"] .verdict-kicker {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 2.6px;
+    text-transform: uppercase;
+    color: var(--result-tone, var(--ember));
+}
+
+html[data-uds-theme="lh"] .verdict-kicker::before {
+    background: var(--result-tone, var(--ember));
+}
+
+html[data-uds-theme="lh"] .result-title,
+html[data-uds-theme="lh"] .verdict-title {
+    font-family: var(--f-display);
+    font-weight: 800;
+    font-size: clamp(30px, 4.6vw, 54px);
+    letter-spacing: -0.8px;
+    line-height: 0.98;
+    text-transform: uppercase;
+    color: var(--text);
+    text-shadow: none;
+}
+
+html[data-uds-theme="lh"] .result-message {
+    color: var(--text-2);
+    max-width: 62ch;
+}
+
+html[data-uds-theme="lh"] .result-file,
+html[data-uds-theme="lh"] .verdict-file {
+    font-family: var(--f-mono);
+    font-size: 12px;
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .result-file::before { color: var(--ember); }
+
+/* --------------------------------------------------- threat index gauge - */
+html[data-uds-theme="lh"] .threat-score {
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%);
+}
+
+html[data-uds-theme="lh"] .threat-score > span {
+    font-family: var(--f-mono);
+    font-size: 9.5px;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .threat-score > strong {
+    font-family: var(--f-display);
+    font-weight: 800;
+    font-size: 60px;
+    line-height: 0.9;
+    letter-spacing: -2px;
+    color: var(--result-tone, var(--ember));
+}
+
+html[data-uds-theme="lh"] .threat-score > strong small {
+    font-family: var(--f-mono);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .threat-score > em {
+    font-family: var(--f-mono);
+    font-style: normal;
+    font-size: 10.5px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+/* Segmented gauge: the mask cuts the solid fill into discrete cells, which
+   reads as an instrument rather than a web progress bar. */
+html[data-uds-theme="lh"] .score-track {
+    background: rgba(233, 216, 198, 0.09);
+    border-radius: 0;
+    height: 8px;
+    overflow: hidden;
+    -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+    mask-image: repeating-linear-gradient(90deg, #000 0 5px, transparent 5px 7px);
+}
+
+html[data-uds-theme="lh"] .score-track i {
+    background: linear-gradient(90deg, var(--result-tone, var(--ember)), color-mix(in srgb, var(--result-tone, var(--ember)) 55%, #fff));
+    box-shadow: none;
+    border-radius: 0;
+    transform-origin: left center;
+    animation: lh-gauge-fill 1.05s var(--ease-out) 0.25s both;
+}
+
+/* The element already carries its target width inline, so scaling from zero
+   fills to exactly the reported score without JS. */
+@keyframes lh-gauge-fill {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+
+/* ============================ SIGNATURE EFFECT ===========================
+   THE SCAN SWEEP. When a report renders, one ember light bar travels down the
+   result plate exactly once, the way a scanning head passes over evidence.
+   It runs on ::before of the shell, above the panel but below all content.
+   ========================================================================= */
+html[data-uds-theme="lh"] .summary.result-shell::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 190px;
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(255, 106, 31, 0.05) 55%,
+        rgba(255, 154, 77, 0.22) 88%,
+        var(--ember-hi) 97%,
+        transparent 100%);
+    opacity: 0;
+    animation: lh-sweep 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.15s 1 both;
+}
+
+@keyframes lh-sweep {
+    0%   { transform: translateY(-190px); opacity: 0; }
+    12%  { opacity: 1; }
+    82%  { opacity: 1; }
+    100% { transform: translateY(115vh); opacity: 0; }
+}
+
+/* =========================== FINDINGS / EVIDENCE ========================= */
+html[data-uds-theme="lh"] .threat,
+html[data-uds-theme="lh"] button.threat.finding-card {
+    position: relative;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ember);
+    border-radius: 0;
+    transition: transform 0.2s var(--ease-out),
+                border-color 0.2s var(--ease-out),
+                background 0.2s var(--ease-out);
+}
+
+html[data-uds-theme="lh"] .threat.critical,
+html[data-uds-theme="lh"] button.threat.finding-card.critical { border-left-color: var(--danger); }
+html[data-uds-theme="lh"] .threat.warning,
+html[data-uds-theme="lh"] button.threat.finding-card.warning { border-left-color: var(--warn); }
+html[data-uds-theme="lh"] .threat.ok { border-left-color: var(--ok); }
+html[data-uds-theme="lh"] .threat.database { border-left-color: var(--ice); }
+
+html[data-uds-theme="lh"] button.threat.finding-card:hover {
+    background: var(--surface-3);
+    border-color: rgba(255, 106, 31, 0.4);
+    transform: translateX(3px);
+}
+
+/* --------------------------------------------------------------- LOCK-ON -
+   Each evidence card acquires targeting brackets on hover and focus: four
+   corner marks drawn from a single element with eight gradient stops. They
+   snap inward, the way a tracking reticle settles on a target. */
+html[data-uds-theme="lh"] button.threat.finding-card::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    z-index: 1;
+    pointer-events: none;
+    --lh-b: var(--ember);
+    background:
+        linear-gradient(var(--lh-b), var(--lh-b)) 0 0        / 13px 2px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 0 0        / 2px 13px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 100% 0     / 13px 2px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 100% 0     / 2px 13px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 0 100%     / 13px 2px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 0 100%     / 2px 13px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 100% 100%  / 13px 2px no-repeat,
+        linear-gradient(var(--lh-b), var(--lh-b)) 100% 100%  / 2px 13px no-repeat;
+    opacity: 0;
+    transform: scale(1.035);
+    transition: opacity 0.2s var(--ease-out), transform 0.28s var(--ease-out);
+}
+
+html[data-uds-theme="lh"] button.threat.finding-card.critical::before { --lh-b: var(--danger); }
+html[data-uds-theme="lh"] button.threat.finding-card.warning::before  { --lh-b: var(--warn); }
+
+html[data-uds-theme="lh"] button.threat.finding-card:hover::before,
+html[data-uds-theme="lh"] button.threat.finding-card:focus-visible::before {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Re-enable the pseudo-element the page CSS switches off, and use it for a
+   single ember wipe that crosses the card as the reticle locks. */
+html[data-uds-theme="lh"] button.threat.finding-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg,
+        transparent 35%, rgba(255, 106, 31, 0.14) 50%, transparent 65%);
+    background-size: 260% 100%;
+    background-position: 130% 0;
+    transition: background-position 0.65s var(--ease-out);
+}
+
+html[data-uds-theme="lh"] button.threat.finding-card:hover::after {
+    background-position: -30% 0;
+}
+
+/* Keep card content above both effect layers. */
+html[data-uds-theme="lh"] .finding-copy,
+html[data-uds-theme="lh"] .finding-meta {
+    position: relative;
+    z-index: 2;
+}
+
+html[data-uds-theme="lh"] .finding-status {
+    font-family: var(--f-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    text-transform: uppercase;
+}
+
+html[data-uds-theme="lh"] .critical .finding-status { color: var(--danger); }
+html[data-uds-theme="lh"] .warning .finding-status  { color: var(--warn); }
+
+html[data-uds-theme="lh"] .threat.finding-card .finding-title-row h3 {
+    font-family: var(--f-display);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text);
+}
+
+html[data-uds-theme="lh"] .threat.finding-card .finding-copy p {
+    font-family: var(--f-ui);
+    color: var(--text-2);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+html[data-uds-theme="lh"] .finding-time,
+html[data-uds-theme="lh"] .finding-events,
+html[data-uds-theme="lh"] .finding-source {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .finding-open {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--ember-hi);
+}
+
+html[data-uds-theme="lh"] .db-confirmed {
+    background: rgba(86, 217, 240, 0.12);
+    border: 1px solid rgba(86, 217, 240, 0.35);
+    color: var(--ice);
+    border-radius: 0;
+    font-family: var(--f-mono);
+    font-size: 9.5px;
+    letter-spacing: 1.4px;
+}
+
+html[data-uds-theme="lh"] .result-section-head > div > span {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 2.4px;
+    text-transform: uppercase;
+    color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .result-count {
+    font-family: var(--f-mono);
+    font-size: 11px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+/* ------------------------------------------------------- cleared verdict - */
+html[data-uds-theme="lh"] .clean-result {
+    background: linear-gradient(100deg, rgba(168, 255, 62, 0.09), transparent 62%);
+    border: 1px solid rgba(168, 255, 62, 0.28);
+    border-left: 3px solid var(--ok);
+    border-radius: 0;
+}
+
+html[data-uds-theme="lh"] .clean-mark {
+    color: var(--ok);
+    filter: drop-shadow(0 0 14px rgba(168, 255, 62, 0.45));
+}
+
+html[data-uds-theme="lh"] .clean-result strong {
+    font-family: var(--f-display);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text);
+}
+
+/* ============================== PILLS / BADGES =========================== */
+html[data-uds-theme="lh"] .sev-pill,
+html[data-uds-theme="lh"] .badge,
+html[data-uds-theme="lh"] .threat-badge,
+html[data-uds-theme="lh"] .repeat-badge,
+html[data-uds-theme="lh"] .clean-badge,
+html[data-uds-theme="lh"] .source {
+    font-family: var(--f-mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    border-radius: 0;
+    padding: 3px 8px;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+}
+
+html[data-uds-theme="lh"] .sev-pill.detected,
+html[data-uds-theme="lh"] .sev-pill.critical,
+html[data-uds-theme="lh"] .badge.detected,
+html[data-uds-theme="lh"] .threat-badge {
+    background: var(--danger-dim);
+    color: var(--danger);
+    border: 1px solid rgba(255, 46, 76, 0.4);
+}
+
+html[data-uds-theme="lh"] .sev-pill.warning,
+html[data-uds-theme="lh"] .sev-pill.warn,
+html[data-uds-theme="lh"] .badge.warning {
+    background: var(--warn-dim);
+    color: var(--warn);
+    border: 1px solid rgba(255, 197, 61, 0.4);
+}
+
+html[data-uds-theme="lh"] .sev-pill.ok,
+html[data-uds-theme="lh"] .badge.ok,
+html[data-uds-theme="lh"] .clean-badge {
+    background: var(--ok-dim);
+    color: var(--ok);
+    border: 1px solid rgba(168, 255, 62, 0.35);
+}
+
+html[data-uds-theme="lh"] .source,
+html[data-uds-theme="lh"] .badge.database,
+html[data-uds-theme="lh"] .sev-pill.info {
+    background: rgba(86, 217, 240, 0.1);
+    color: var(--ice);
+    border: 1px solid rgba(86, 217, 240, 0.3);
+}
+
+html[data-uds-theme="lh"] .repeat-badge {
+    background: var(--warn-dim);
+    color: var(--warn);
+    border: 1px solid rgba(255, 197, 61, 0.38);
+}
+
+/* ================================= TABLES ================================ */
+html[data-uds-theme="lh"] .scan-table,
+html[data-uds-theme="lh"] .timeline-table,
+html[data-uds-theme="lh"] table.data {
+    border-radius: 0;
+    border-collapse: collapse;
+}
+
+html[data-uds-theme="lh"] .scan-table th,
+html[data-uds-theme="lh"] .timeline-table th,
+html[data-uds-theme="lh"] table.data th,
+html[data-uds-theme="lh"] .timeline-head th {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+    padding: 11px 14px;
+}
+
+html[data-uds-theme="lh"] .scan-table td,
+html[data-uds-theme="lh"] .timeline-table td,
+html[data-uds-theme="lh"] table.data td {
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--text-2);
+    padding: 11px 14px;
+}
+
+html[data-uds-theme="lh"] .scan-table tbody tr,
+html[data-uds-theme="lh"] table.data tbody tr {
+    transition: background 0.16s var(--ease-out);
+}
+
+html[data-uds-theme="lh"] .scan-table tbody tr:hover,
+html[data-uds-theme="lh"] table.data tbody tr:hover td {
+    background: rgba(255, 106, 31, 0.055);
+}
+
+html[data-uds-theme="lh"] .scan-row.detected td,
+html[data-uds-theme="lh"] .timeline-row.detected td { box-shadow: inset 3px 0 0 var(--danger); }
+html[data-uds-theme="lh"] .scan-row.warning td,
+html[data-uds-theme="lh"] .timeline-row.warning td { box-shadow: inset 3px 0 0 var(--warn); }
+html[data-uds-theme="lh"] .scan-row.ok td,
+html[data-uds-theme="lh"] .timeline-row.ok td { box-shadow: inset 3px 0 0 var(--ok); }
+
+html[data-uds-theme="lh"] .scan-action {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 1.4px;
+}
+
+/* ====================== UPLOAD: RADAR SWEEP + PROGRESS ===================
+   While a demo uploads and scans, a conic sweep rotates behind the progress
+   readout. It is the one moving decoration in the theme, and it exists to
+   signal that work is genuinely in flight.
+   ========================================================================= */
+html[data-uds-theme="lh"] .upload-overlay {
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    border-color: rgba(255, 106, 31, 0.35);
+    border-radius: 4px;
+}
+
+html[data-uds-theme="lh"] .ux-radar-sweep {
+    background: conic-gradient(from 0deg,
+        transparent 0deg,
+        rgba(255, 106, 31, 0.015) 240deg,
+        rgba(255, 106, 31, 0.16) 325deg,
+        rgba(255, 154, 77, 0.42) 358deg,
+        transparent 360deg);
+}
+
+html[data-uds-theme="lh"] .ux-panel {
+    background: linear-gradient(180deg, rgba(20, 16, 14, 0.97), rgba(10, 8, 7, 0.99));
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--ember);
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(255, 106, 31, 0.1), 0 30px 80px rgba(0, 0, 0, 0.8);
+}
+
+html[data-uds-theme="lh"] .ux-corner {
+    border-color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .ux-pulse {
+    background: var(--ember);
+    box-shadow: 0 0 12px var(--ember);
+}
+
+html[data-uds-theme="lh"] .ux-stream-status {
+    background: rgba(255, 106, 31, 0.1);
+    border-color: rgba(255, 106, 31, 0.32);
+    color: var(--ember-hi);
+}
+
+html[data-uds-theme="lh"] .ux-ext {
+    border-color: var(--line);
+    color: var(--ember-hi);
+}
+
+html[data-uds-theme="lh"] .ux-file {
+    background: rgba(255, 106, 31, 0.04);
+    border-color: rgba(233, 216, 198, 0.15);
+}
+
+html[data-uds-theme="lh"] .ux-file-icon {
+    color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .ux-progress {
+    background: rgba(14, 11, 9, 0.7);
+    border-color: rgba(233, 216, 198, 0.15);
+}
+
+html[data-uds-theme="lh"] .ux-spinner {
+    border-color: rgba(255, 106, 31, 0.2);
+    border-top-color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .ux-pct {
+    color: var(--ember-hi);
+    text-shadow: 0 0 16px rgba(255, 106, 31, 0.4);
+}
+
+html[data-uds-theme="lh"] .ux-fill {
+    background: linear-gradient(90deg, var(--ember-deep), var(--ember) 65%, var(--ember-hi));
+    box-shadow: 0 0 18px rgba(255, 106, 31, 0.6);
+}
+
+html[data-uds-theme="lh"] .ux-pipe-step.is-active {
+    border-color: var(--ember);
+    background: rgba(255, 106, 31, 0.12);
+    box-shadow: 0 0 14px rgba(255, 106, 31, 0.25);
+}
+
+html[data-uds-theme="lh"] .ux-pipe-step.is-active .ux-step-icon,
+html[data-uds-theme="lh"] .ux-pipe-step.is-active .ux-step-status {
+    color: var(--ember-hi);
+}
+
+html[data-uds-theme="lh"] .ux-log {
+    background: rgba(10, 8, 7, 0.85);
+    border-color: rgba(255, 106, 31, 0.22);
+}
+
+html[data-uds-theme="lh"] .ux-log-dot {
+    background: var(--ember);
+    box-shadow: 0 0 8px var(--ember);
+}
+html[data-uds-theme="lh"] .ux-log-prefix {
+    color: var(--ember);
+    background: transparent;
+}
+html[data-uds-theme="lh"] .scan-details::after {
+    color: var(--ember);
+    background: transparent;
+}
+
+/* ================================= MODAL ================================= */
+html[data-uds-theme="lh"] .modal-backdrop {
+    background: rgba(6, 7, 9, 0.82);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+html[data-uds-theme="lh"] .modal {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--ember);
+    border-radius: 0;
+    clip-path: var(--notch);
+    box-shadow: var(--shadow-lg);
+}
+
+html[data-uds-theme="lh"] .modal-head {
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+}
+
+html[data-uds-theme="lh"] .modal h2,
+html[data-uds-theme="lh"] .modal-head h2 {
+    font-family: var(--f-display);
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+}
+
+html[data-uds-theme="lh"] .modal-body dt {
+    font-family: var(--f-mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ember);
+}
+
+html[data-uds-theme="lh"] .modal-body dd {
+    color: var(--text-2);
+}
+
+html[data-uds-theme="lh"] .close-modal {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    clip-path: none;
+}
+
+html[data-uds-theme="lh"] .close-modal:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+    background: var(--danger-dim);
+}
+
+/* ================================= TOASTS ================================ */
+html[data-uds-theme="lh"] .toast {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ember);
+    border-radius: 0;
+    font-family: var(--f-ui);
+    box-shadow: var(--shadow);
+}
+
+html[data-uds-theme="lh"] .toast.ok     { border-left-color: var(--ok); }
+html[data-uds-theme="lh"] .toast.warn   { border-left-color: var(--warn); }
+html[data-uds-theme="lh"] .toast.danger,
+html[data-uds-theme="lh"] .toast.error  { border-left-color: var(--danger); }
+
+/* ========================== PLAYER / TIMELINE BITS ======================= */
+html[data-uds-theme="lh"] .player-panel h3,
+html[data-uds-theme="lh"] .compat-title {
+    font-family: var(--f-display);
+    text-transform: uppercase;
+    letter-spacing: 1.3px;
+    color: var(--text);
+}
+
+html[data-uds-theme="lh"] .rp-status {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 0;
+    font-family: var(--f-mono);
+    font-size: 12px;
+    color: var(--text-2);
+}
+
+html[data-uds-theme="lh"] .rp-dot.ok   { background: var(--ok); box-shadow: 0 0 10px rgba(168, 255, 62, 0.6); }
+html[data-uds-theme="lh"] .rp-dot.warn { background: var(--warn); box-shadow: 0 0 10px rgba(255, 197, 61, 0.6); }
+
+html[data-uds-theme="lh"] .xash-tl-track {
+    background: rgba(233, 216, 198, 0.09);
+    border: 1px solid var(--line);
+    border-radius: 0;
+}
+
+html[data-uds-theme="lh"] .xash-tl-mk.mk-det  { background: var(--danger); }
+html[data-uds-theme="lh"] .xash-tl-mk.mk-warn { background: var(--warn); }
+html[data-uds-theme="lh"] .xash-tl-mk.mk-info { background: var(--ice); }
+html[data-uds-theme="lh"] .xash-tl-cursor     { background: var(--ember); }
+
+html[data-uds-theme="lh"] .collapse-panel > summary {
+    font-family: var(--f-display);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text);
+    background: var(--bg-2);
+}
+
+html[data-uds-theme="lh"] .collapse-panel > summary::before { color: var(--ember); }
+
+html[data-uds-theme="lh"] .empty-state {
+    font-family: var(--f-ui);
+    color: var(--muted);
+}
+
+html[data-uds-theme="lh"] .empty-state strong {
+    font-family: var(--f-display);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-2);
+}
+
+/* ====================== JS-DRIVEN REVEAL CHOREOGRAPHY ====================
+   lh-effects.js tags the report once it is in view. Evidence cards then
+   arrive in sequence rather than all at once, which lets the eye read the
+   list in severity order instead of taking the whole block as one wall.
+   ========================================================================= */
+html[data-uds-theme="lh"] .lh-reveal {
+    opacity: 0;
+    transform: translateY(14px);
+}
+
+html[data-uds-theme="lh"] .lh-reveal.lh-in {
+    opacity: 1;
+    transform: none;
+    transition: opacity 0.5s var(--ease-out), transform 0.5s var(--ease-out);
+    transition-delay: var(--lh-delay, 0ms);
+}
+
+/* Verdict stamp: the headline resolves from soft and slightly oversized to
+   sharp, like a stamp being pressed onto the report. */
+html[data-uds-theme="lh"] .lh-stamp {
+    animation: lh-stamp 0.62s cubic-bezier(0.2, 0.9, 0.24, 1) 0.1s both;
+}
+
+@keyframes lh-stamp {
+    0%   { opacity: 0; transform: scale(1.1); filter: blur(6px); }
+    60%  { opacity: 1; }
+    100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
+/* Counter roll-up target: keep the box from reflowing as digits change. */
+html[data-uds-theme="lh"] .lh-counting {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+/* ============================ FOOTBAR REFINEMENT ========================= */
+/* The bar is deliberately the quietest surface in the theme. LH only warms
+   the ground and sets the title in the display face; the accent hairline the
+   theme used to draw across the top is gone, because a status bar should not
+   announce itself. */
+html[data-uds-theme="lh"] .uds-footbar {
+    background: color-mix(in srgb, var(--bg-2) 80%, transparent);
+    border-top: 1px solid var(--line-soft);
+    box-shadow: 0 -6px 22px rgba(0, 0, 0, 0.4);
+}
+
+html[data-uds-theme="lh"] .uds-fb-mark {
+    background: var(--ember);
+}
+
+html[data-uds-theme="lh"] .uds-fb-title {
+    font-family: var(--f-display);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+
+html[data-uds-theme="lh"] .uds-theme-thumb {
+    background: var(--accent-dim);
+    border-color: rgba(255, 106, 31, 0.55);
+}
+
+/* ============================== ACCESSIBILITY ============================ */
+/* Every effect in this theme is decoration over content that is already
+   readable without it, so reduced-motion drops the motion outright rather
+   than shortening it. */
+@media (prefers-reduced-motion: reduce) {
+    html[data-uds-theme="lh"] .summary.result-shell::before,
+    html[data-uds-theme="lh"] .upload-overlay.is-active::before,
+    html[data-uds-theme="lh"] .progress-bar::after {
+        animation: none;
+        opacity: 0;
+    }
+
+    html[data-uds-theme="lh"] .score-track i,
+    html[data-uds-theme="lh"] .lh-stamp {
+        animation: none;
+    }
+
+    html[data-uds-theme="lh"] .lh-reveal {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* ============ LH STYLE: REPORT NAV BAR & RETURN HOME ============ */
+html[data-uds-theme="lh"] .report-nav-bar {
+    background: linear-gradient(180deg, rgba(22, 17, 14, 0.88), rgba(12, 10, 8, 0.96));
+    border-color: rgba(255, 106, 31, 0.22);
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55), inset 0 0 20px rgba(255, 106, 31, 0.04);
+}
+html[data-uds-theme="lh"] .report-nav-bar::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 106, 31, 0.45), transparent);
+}
+html[data-uds-theme="lh"] .btn-return-home {
+    background: linear-gradient(135deg, rgba(255, 106, 31, 0.1) 0%, rgba(14, 11, 9, 0.92) 100%);
+    border-color: rgba(255, 106, 31, 0.38);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 0 12px rgba(255, 106, 31, 0.08);
+}
+html[data-uds-theme="lh"] .btn-return-home .rnb-corner {
+    border-color: var(--ember);
+}
+html[data-uds-theme="lh"] .rnb-icon-box {
+    background: rgba(255, 106, 31, 0.14);
+    border-color: rgba(255, 106, 31, 0.45);
+    color: var(--ember);
+    box-shadow: 0 0 12px rgba(255, 106, 31, 0.2);
+}
+html[data-uds-theme="lh"] .rnb-kicker {
+    color: var(--ember);
+}
+html[data-uds-theme="lh"] .rnb-action-tag {
+    background: rgba(255, 106, 31, 0.15);
+    border-color: rgba(255, 106, 31, 0.4);
+    color: var(--ember-hi);
+}
+html[data-uds-theme="lh"] .btn-return-home:hover {
+    background: linear-gradient(135deg, rgba(255, 106, 31, 0.25) 0%, rgba(14, 11, 9, 0.98) 100%);
+    border-color: var(--ember-hi);
+    box-shadow: 0 4px 22px rgba(255, 106, 31, 0.32), inset 0 0 18px rgba(255, 106, 31, 0.15);
+}
+html[data-uds-theme="lh"] .btn-return-home:hover .rnb-icon-box {
+    background: linear-gradient(135deg, var(--ember), var(--ember-hi));
+    color: #0e0b09;
+    box-shadow: 0 0 16px var(--ember);
+}
+html[data-uds-theme="lh"] .btn-return-home:hover .rnb-label {
+    color: var(--ember-hi);
+    text-shadow: 0 0 10px rgba(255, 106, 31, 0.5);
+}
+html[data-uds-theme="lh"] .btn-return-home:hover .rnb-action-tag {
+    background: var(--ember);
+    color: #0e0b09;
+    border-color: var(--ember);
+    box-shadow: 0 0 10px var(--ember);
+}
+html[data-uds-theme="lh"] .rnb-file-icon {
+    color: var(--ember);
+}
+
+/* ================================= PRINT ================================= */
+@media print {
+    html[data-uds-theme="lh"] body {
+        background: #fff;
+        color: #000;
+    }
+
+    html[data-uds-theme="lh"] body::before,
+    html[data-uds-theme="lh"] body::after,
+    html[data-uds-theme="lh"] .summary.result-shell::before,
+    html[data-uds-theme="lh"] .upload-overlay.is-active::before {
+        display: none;
+    }
+
+    html[data-uds-theme="lh"] .summary,
+    html[data-uds-theme="lh"] .threat,
+    html[data-uds-theme="lh"] button.threat.finding-card {
+        clip-path: none;
+        box-shadow: none;
+    }
+
+    html[data-uds-theme="lh"] .lh-reveal {
+        opacity: 1;
+        transform: none;
+    }
+}
