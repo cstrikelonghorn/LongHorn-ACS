@@ -1,0 +1,66 @@
+name: Deploy site
+
+# Publishes ONLY the static ./site directory to GitHub Pages.
+#
+# Safety: the site must never contain application source. A guard step fails the
+# build if any .php/.cs/.cpp/.h/.py/.sqlite/.json-config file is found under site/,
+# so the back-end, detection logic and player data can never be published.
+#
+# Note: GitHub Pages for a PRIVATE repository requires a paid plan (Pro/Team/Enterprise).
+# On a free account, make the repository public or use a separate public "site" repo.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build static site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard — refuse to publish if any source file is present
+        run: |
+          set -e
+          found=$(find site -type f \
+            \( -name '*.php' -o -name '*.cs' -o -name '*.cpp' -o -name '*.c' \
+               -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o -name '*.sqlite' \
+               -o -name '*.sql' -o -name '*.json' -o -name '*.env' \) \
+            ! -name 'package.json' || true)
+          if [ -n "$found" ]; then
+            echo "::error::Source/back-end files found under site/ — refusing to publish:"
+            echo "$found"
+            exit 1
+          fi
+          echo "Guard passed: site/ contains only static assets."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
