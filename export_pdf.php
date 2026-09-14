@@ -319,7 +319,7 @@ $pdfProcesses = acp_sanitize_processes(array_slice($report['processes'] ?? [], 0
             <?php endif; ?>
             <div class="t-row"><span class="t-label">Renderer / Mode</span><span class="t-val"><?= acp_h($summary['renderMode']) ?> &middot; <?= acp_h($summary['gameWindowMode']) ?></span></div>
             <?php $pdfServer = acs_server_view($report); ?>
-            <div class="t-row"><span class="t-label">Active Server</span><span class="t-val"><?= acp_h($pdfServer['status'] === 'connected' ? $pdfServer['name'] . ' · ' . $pdfServer['address'] : $pdfServer['name']) ?></span></div>
+            <div class="t-row"><span class="t-label">Active Server</span><span class="t-val"><?= acp_h($pdfServer['status'] === 'connected' ? $pdfServer['name'] . ' · ' . $pdfServer['address'] : $pdfServer['name']) ?><?php if ($pdfServer['status'] === 'not-connected'): ?> <span style="color:#d97706;font-weight:bold;">[NOT IN MATCH SERVER]</span><?php endif; ?></span></div>
             <div class="t-row"><span class="t-label">Server Map</span><span class="t-val mono"><?= acp_h($pdfServer['status'] === 'connected' ? acp_clean_map($pdfServer['map']) : $pdfServer['map']) ?></span></div>
         </div>
 

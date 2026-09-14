@@ -526,7 +526,14 @@ function acp_field_group(string $label): void
                                     </div>
                                     <div class="srv-addr mono"><?= acp_h($serverView['address']) ?></div>
                                 <?php else: ?>
-                                    <span class="dim-text"><?= acp_h($serverView['name']) ?></span>
+                                    <div class="srv-unconnected">
+                                        <span class="dim-text"><?= acp_h($serverView['name']) ?></span>
+                                        <?php if ($serverView['status'] === 'not-connected'): ?>
+                                            <span class="srv-status-chip srv-chip-warn" title="Player was not joined to any match server at scan time">⚠️ NOT IN MATCH SERVER</span>
+                                        <?php elseif ($serverView['status'] === 'unverified'): ?>
+                                            <span class="srv-status-chip srv-chip-unverified" title="Server connection could not be verified">⚠️ UNVERIFIED CONNECTION</span>
+                                        <?php endif; ?>
+                                    </div>
                                 <?php endif; ?>
                                 <div class="srv-addr" title="<?= acp_h($serverView['note']) ?>"><?= acp_h($serverView['note']) ?></div>
                                 <?php if (!empty($serverView['warnings'])): ?>

@@ -1673,6 +1673,41 @@ html[data-uds-theme] .dim-text {
     font-style: italic;
 }
 
+html[data-uds-theme] .srv-unconnected {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+html[data-uds-theme] .srv-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    border-radius: 4px;
+    font-family: var(--f-mono);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+html[data-uds-theme] .srv-chip-warn {
+    background: color-mix(in srgb, var(--warn) 18%, transparent);
+    color: var(--warn);
+    border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--warn) 15%, transparent);
+}
+
+html[data-uds-theme] .srv-chip-unverified {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 /* ------------------------------------------- server connection evidence chain */
 html[data-uds-theme] .srv-warnings {
     display: flex;

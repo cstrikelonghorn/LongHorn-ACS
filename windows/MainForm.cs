@@ -685,6 +685,7 @@ public sealed class MainForm : Form
     private static readonly string[] Hints =
     {
         "Counter-Strike must be running before you scan.",
+        "Stay joined to your match server while scanning for admin verification.",
         "The report link opens in your browser and can be shared with an admin.",
         "A clean result is useful evidence you can hand to a server admin.",
         "Scanning reads your game's files and memory. Nothing is changed.",
@@ -740,7 +741,7 @@ public sealed class MainForm : Form
         _tips.SetToolTip(_cancelButton, "Stop the scan in progress (ESC)");
         _tips.SetToolTip(_logButton, "Open the evidence log and copy the report link");
 
-        AppendLog(LogLevel.Muted, "ACS evidence engine ready. Launch Counter-Strike 1.6, then press SCAN.");
+        AppendLog(LogLevel.Muted, "ACS evidence engine ready. Launch Counter-Strike 1.6 and join your match server, then press SCAN.");
 
         _fx.Tick += (_, _) =>
         {

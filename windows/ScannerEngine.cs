@@ -187,7 +187,7 @@ public static class ScannerEngine
 					return true;
 				}
 			}
-			return source.Equals("live-behavior", StringComparison.OrdinalIgnoreCase) && Scopes.Any((string s) => s.Equals("demo-file", StringComparison.OrdinalIgnoreCase));
+			return false;
 		}
 	}
 
@@ -222,13 +222,6 @@ public static class ScannerEngine
 	private sealed record ModuleRange(string Name, string Path, long Base, long Size);
 
 	private sealed record InlineHookResult(bool Hooked, string? HookedAddr);
-
-	private sealed record DemoEntry(int Type, string Description, int Flags, int CDTrack, float TrackTime, int Frames, int Offset, int FileLength);
-
-	private readonly record struct DemoFrame(float Time, float ViewPitch, float ViewYaw, float ViewRoll, float ForwardMove, float SideMove, float UpMove, ushort Buttons, float PunchX, float PunchY, float PunchZ)
-	{
-		public static DemoFrame Empty { get; } = new DemoFrame(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0, 0f, 0f, 0f);
-	}
 
 	private readonly record struct LiveInputSample(double Time, int X, int Y, bool Attack, bool Jump, bool Forward, bool Back, bool Left, bool Right, bool Duck, bool InGame, double MouseDelta);
 
@@ -279,87 +272,6 @@ public static class ScannerEngine
 				["jumpStrafeSamples"] = JumpStrafeSamples,
 				["strafeAlternations"] = StrafeAlternations,
 				["maxMouseDelta"] = MaxMouseDelta.ToString("0.0"),
-				["output"] = ScannerOutput
-			};
-		}
-	}
-
-	private sealed class DemoBehaviorResult
-	{
-		public string Path { get; }
-
-		public long Bytes { get; }
-
-		public string LastWriteUtc { get; }
-
-		public bool Valid { get; set; }
-
-		public int DemoProtocol { get; set; }
-
-		public int NetProtocol { get; set; }
-
-		public string Map { get; set; } = "";
-
-		public string GameDir { get; set; } = "";
-
-		public int Frames { get; set; }
-
-		public double DurationSeconds { get; set; }
-
-		public int AttackFrames { get; set; }
-
-		public int AttackPresses { get; set; }
-
-		public int MicroAngleAttackPresses { get; set; }
-
-		public int AttackSnapFrames { get; set; }
-
-		public double AttackSnapDeltaTotal { get; set; }
-
-		public double MaxAngleDelta { get; set; }
-
-		public double AngleDeltaTotal { get; set; }
-
-		public int AngleSamples { get; set; }
-
-		public int PunchSamples { get; set; }
-
-		public double PunchTotal { get; set; }
-
-		public int ZeroPunchAttackFrames { get; set; }
-
-		public int JumpMoveFrames { get; set; }
-
-		public int InvalidMoveFrames { get; set; }
-
-		public bool PreviousAttack { get; set; }
-
-		public string ScannerOutput { get; set; } = "";
-
-		public DemoBehaviorResult(string path, long bytes, string lastWriteUtc)
-		{
-			Path = path;
-			Bytes = bytes;
-			LastWriteUtc = lastWriteUtc;
-		}
-
-		public Dictionary<string, object?> ToDictionary(string root)
-		{
-			return new Dictionary<string, object>
-			{
-				["file"] = SafeRelative(root, Path),
-				["path"] = Path,
-				["bytes"] = Bytes,
-				["lastWriteUtc"] = LastWriteUtc,
-				["valid"] = Valid,
-				["map"] = Map,
-				["gameDir"] = GameDir,
-				["frames"] = Frames,
-				["durationSeconds"] = DurationSeconds.ToString("0.0"),
-				["attackPresses"] = AttackPresses,
-				["attackSnapFrames"] = AttackSnapFrames,
-				["maxAngleDelta"] = MaxAngleDelta.ToString("0.0"),
-				["invalidMoveFrames"] = InvalidMoveFrames,
 				["output"] = ScannerOutput
 			};
 		}
@@ -486,11 +398,7 @@ public static class ScannerEngine
 
 	private const int MaxMemoryArtifacts = 80;
 
-	private const int MaxDemoFiles = 8;
-
 	private const int MaxConfigFiles = 400;
-
-	private const long MaxDemoBytes = 134217728L;
 
 	private const long MaxHashBytes = 67108864L;
 
@@ -522,20 +430,6 @@ public static class ScannerEngine
 
 	private const uint PageExecuteWriteCopy = 128u;
 
-	private const int DemoHeaderSize = 544;
-
-	private const int DemoEntrySize = 92;
-
-	private const int DemoInfoSize = 440;
-
-	private const int DemoSequenceInfoSize = 28;
-
-	private const int DemoClientDataSize = 32;
-
-	private const int DemoEventSize = 72;
-
-	private const int DemoMaxMessage = 65536;
-
 	private const ushort InAttack = 1;
 
 	private const ushort InJump = 2;
@@ -565,10 +459,9 @@ public static class ScannerEngine
 
 	private static RuleSet? _activeRules;
 
-	private static readonly string[] MatchSources = new string[11]
+	private static readonly string[] MatchSources = new string[10]
 	{
-		"game-process", "process", "module", "driver", "memory", "hl-file", "hl-config", "execution-trace", "download-trace", "live-behavior",
-		"demo-file"
+		"game-process", "process", "module", "driver", "memory", "hl-file", "hl-config", "execution-trace", "download-trace", "live-behavior"
 	};
 
 	private static readonly SemaphoreSlim ScanGate = new SemaphoreSlim(1, 1);
@@ -775,11 +668,6 @@ public static class ScannerEngine
 				Stage("Verifying game module code against the files on disk...");
 				List<Dictionary<string, object?>> moduleIntegrity = VerifyGameModules(target, modules, findings, findingKeys, notes);
 				GameWindowInfo windowInfo = ReadGameWindowInfo(target.Process);
-				Stage("Scanning in-memory GoldSrc cvars...");
-				// The old cvar probe guessed a cvar_t layout from the first pointer-shaped byte
-				// sequence after a name. That layout varies across Steam and community engines and
-				// produced false detections, so it remains disabled until build-specific layouts are
-				// validated. Config-file cvars are still collected as review evidence.
 				Stage("Checking for external readers, injected threads and overlays...");
 				Dictionary<string, object?> externalSurface = ScanExternalSurface(target, modules, windowInfo, findings, findingKeys, notes);
 				Stage("Scanning live hl.exe directory...");
@@ -1850,76 +1738,7 @@ public static class ScannerEngine
 		{
 			MatchRules(database, "live-behavior", result.ScannerOutput, "Live in-game behavior capture", findings, findingKeys, result.StartedAt);
 		}
-		AddLiveBehaviorFindings(result, findings, findingKeys, target.StartTime);
 		return result;
-	}
-
-	private static void ScanLiveCvars(HlTarget target, List<Dictionary<string, object?>> modules, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, List<string> notes)
-	{
-		Dictionary<string, object> dictionary = modules.FirstOrDefault((Dictionary<string, object> m) => string.Equals(Convert.ToString(m.GetValueOrDefault("name")), "hw.dll", StringComparison.OrdinalIgnoreCase));
-		if (dictionary == null)
-		{
-			return;
-		}
-		long num = ToLong(dictionary.GetValueOrDefault("baseAddress"));
-		long num2 = ToLong(dictionary.GetValueOrDefault("memorySize"));
-		if (num <= 0 || num2 <= 0)
-		{
-			return;
-		}
-		nint num3 = OpenProcess(1040, bInheritHandle: false, target.Process.Id);
-		if (num3 == IntPtr.Zero)
-		{
-			return;
-		}
-		try
-		{
-			(string, float, string, string)[] array = new(string, float, string, string)[2]
-			{
-				("r_drawentities", 0f, "WARNING", "Possible Wallhack/Chams state: r_drawentities appears to be 0 in live game memory"),
-				("gl_monolights", 1f, "WARNING", "Possible fullbright state: gl_monolights appears to be 1 in live game memory")
-			};
-			int num4 = (int)Math.Min(num2, 4194304L);
-			byte[] array2 = new byte[num4];
-			if (!ReadProcessMemory(num3, new IntPtr(num), array2, num4, out var lpNumberOfBytesRead) || lpNumberOfBytesRead <= 0)
-			{
-				return;
-			}
-			(string, float, string, string)[] array3 = array;
-			for (int num5 = 0; num5 < array3.Length; num5++)
-			{
-				(string, float, string, string) tuple = array3[num5];
-				byte[] bytes = Encoding.ASCII.GetBytes(tuple.Item1 + "\0");
-				int num6 = IndexOfSequence(array2, bytes, 0, lpNumberOfBytesRead);
-				if (num6 < 0)
-				{
-					continue;
-				}
-				uint value = (uint)(num + num6);
-				byte[] bytes2 = BitConverter.GetBytes(value);
-				int startIndex = 0;
-				while ((startIndex = IndexOfSequence(array2, bytes2, startIndex, lpNumberOfBytesRead)) >= 0)
-				{
-					if (startIndex + 16 <= lpNumberOfBytesRead)
-					{
-						float num7 = BitConverter.ToSingle(array2, startIndex + 12);
-						if (Math.Abs(num7 - tuple.Item2) < 0.001f)
-						{
-							AddEngineFinding(findings, findingKeys, "acp-cvar-" + tuple.Item1, "Manipulated in-memory cvar: " + tuple.Item1, tuple.Item3, "in-game", "memory", $"{tuple.Item1} = {num7} (expected {1f - tuple.Item2})", tuple.Item4, DateTimeOffset.UtcNow.ToString("O"));
-						}
-					}
-					startIndex += 4;
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			notes.Add("In-memory cvar scan failed: " + ex.Message);
-		}
-		finally
-		{
-			CloseHandle(num3);
-		}
 	}
 
 	private static void ScanUsnJournalDeletions(string gameRoot, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, List<string> notes)
@@ -1940,323 +1759,19 @@ public static class ScannerEngine
 			{
 				string lowerName = item.FileName.ToLowerInvariant();
 				bool flag = source.Any((string p) => lowerName.Contains(p));
+				if (!flag)
+				{
+					continue;
+				}
 				string severity = "WARNING";
 				double totalMinutes = (DateTimeOffset.UtcNow - item.DeletedAt).TotalMinutes;
-				AddEngineFinding(findings, findingKeys, "acp-usn-" + item.FileName, "Recently deleted executable file: " + item.FileName, severity, "filesystem-forensics", "execution-trace", $"{item.FileName} on {item.Volume} (deleted {totalMinutes:F1}m ago at {item.DeletedAt:u})", flag ? "The deleted filename resembles a known cheat name, but deletion history and a name alone are not proof." : "An executable/library was deleted shortly before the scan; review only if corroborated by live evidence.", item.DeletedAt.ToString("O"));
+				AddEngineFinding(findings, findingKeys, "acp-usn-" + item.FileName, "Recently deleted executable file: " + item.FileName, severity, "filesystem-forensics", "execution-trace", $"{item.FileName} on {item.Volume} (deleted {totalMinutes:F1}m ago at {item.DeletedAt:u})", "The deleted filename resembles a known cheat name, but deletion history and a name alone are not proof.", item.DeletedAt.ToString("O"));
 			}
 		}
 		catch (Exception ex)
 		{
 			notes.Add("USN Journal analysis failed: " + ex.Message);
 		}
-	}
-
-	private static int IndexOfSequence(byte[] buffer, byte[] pattern, int startIndex, int count)
-	{
-		if (buffer == null || pattern == null || pattern.Length == 0 || startIndex < 0 || count <= 0)
-		{
-			return -1;
-		}
-		int num = Math.Min(buffer.Length, startIndex + count) - pattern.Length;
-		for (int i = startIndex; i <= num; i++)
-		{
-			bool flag = true;
-			for (int j = 0; j < pattern.Length; j++)
-			{
-				if (buffer[i + j] != pattern[j])
-				{
-					flag = false;
-					break;
-				}
-			}
-			if (flag)
-			{
-				return i;
-			}
-		}
-		return -1;
-	}
-
-	private static IEnumerable<string> FindRecentDemoFiles(string root, List<string> notes)
-	{
-		string[] source = new string[3]
-		{
-			root,
-			Path.Combine(root, "cstrike"),
-			Path.Combine(root, "valve")
-		};
-		List<string> list = new List<string>();
-		foreach (string item in source.Where(Directory.Exists).Distinct<string>(StringComparer.OrdinalIgnoreCase))
-		{
-			try
-			{
-				list.AddRange(Directory.EnumerateFiles(item, "*.dem", SearchOption.TopDirectoryOnly));
-			}
-			catch (Exception ex)
-			{
-				notes.Add("Unable to enumerate demos in " + item + ": " + ex.Message);
-			}
-		}
-		return (from path in list.Distinct<string>(StringComparer.OrdinalIgnoreCase)
-			where Safe(() => new FileInfo(path).Length <= 134217728)
-			orderby Safe(() => File.GetLastWriteTimeUtc(path)) descending
-			select path).Take(8).ToArray();
-	}
-
-	private static DemoBehaviorResult AnalyzeGoldSrcDemo(string path)
-	{
-		using FileStream fileStream = File.OpenRead(path);
-		using BinaryReader binaryReader = new BinaryReader(fileStream, Encoding.ASCII, leaveOpen: false);
-		FileInfo fileInfo = new FileInfo(path);
-		DemoBehaviorResult demoBehaviorResult = new DemoBehaviorResult(path, fileInfo.Length, fileInfo.LastWriteTimeUtc.ToString("O"));
-		if (fileStream.Length < 544)
-		{
-			demoBehaviorResult.ScannerOutput = "[INFO] Demo file is too small for behavior analysis.";
-			return demoBehaviorResult;
-		}
-		string text = Encoding.ASCII.GetString(binaryReader.ReadBytes(8)).TrimEnd('\0');
-		demoBehaviorResult.Valid = text == "HLDEMO";
-		demoBehaviorResult.DemoProtocol = binaryReader.ReadInt32();
-		demoBehaviorResult.NetProtocol = binaryReader.ReadInt32();
-		demoBehaviorResult.Map = ReadFixedAscii(binaryReader, 260);
-		demoBehaviorResult.GameDir = ReadFixedAscii(binaryReader, 260);
-		binaryReader.ReadUInt32();
-		int num = binaryReader.ReadInt32();
-		if (!demoBehaviorResult.Valid || num <= 0 || num >= fileStream.Length - 4)
-		{
-			demoBehaviorResult.ScannerOutput = "[INFO] Demo header not valid for GoldSrc behavior analysis.";
-			return demoBehaviorResult;
-		}
-		fileStream.Position = num;
-		int num2 = binaryReader.ReadInt32();
-		if (num2 <= 0 || num2 > 1024)
-		{
-			demoBehaviorResult.ScannerOutput = "[INFO] Demo directory is invalid.";
-			return demoBehaviorResult;
-		}
-		List<DemoEntry> list = new List<DemoEntry>();
-		for (int i = 0; i < num2; i++)
-		{
-			if (fileStream.Position + 92 > fileStream.Length)
-			{
-				break;
-			}
-			list.Add(new DemoEntry(binaryReader.ReadInt32(), ReadFixedAscii(binaryReader, 64), binaryReader.ReadInt32(), binaryReader.ReadInt32(), binaryReader.ReadSingle(), binaryReader.ReadInt32(), binaryReader.ReadInt32(), binaryReader.ReadInt32()));
-		}
-		foreach (DemoEntry item in list.Where((DemoEntry e) => e.Offset > 0 && e.FileLength > 0))
-		{
-			ParseDemoEntry(binaryReader, fileStream, item, demoBehaviorResult);
-			if (demoBehaviorResult.Frames >= 30000)
-			{
-				break;
-			}
-		}
-		demoBehaviorResult.ScannerOutput = BuildDemoBehaviorOutput(demoBehaviorResult);
-		return demoBehaviorResult;
-	}
-
-	private static void ParseDemoEntry(BinaryReader reader, Stream stream, DemoEntry entry, DemoBehaviorResult result)
-	{
-		long num = Math.Min(stream.Length, entry.Offset + Math.Max(0, entry.FileLength));
-		stream.Position = entry.Offset;
-		DemoFrame? previous = null;
-		int num2 = 0;
-		while (stream.Position + 16 < num && num2++ < 40000)
-		{
-			long position = stream.Position;
-			bool flag = true;
-			while (flag && stream.Position + 9 < num)
-			{
-				byte b = reader.ReadByte();
-				reader.ReadSingle();
-				reader.ReadInt32();
-				switch (b)
-				{
-				case 3:
-					SkipBytes(stream, 64, num);
-					break;
-				case 4:
-					SkipBytes(stream, 32, num);
-					break;
-				case 5:
-					return;
-				case 6:
-					SkipBytes(stream, 84, num);
-					break;
-				case 7:
-					SkipBytes(stream, 8, num);
-					break;
-				case 8:
-				{
-					if (stream.Position + 8 > num)
-					{
-						return;
-					}
-					reader.ReadInt32();
-					int num4 = reader.ReadInt32();
-					if (num4 < 0 || num4 > 65536)
-					{
-						return;
-					}
-					SkipBytes(stream, num4 + 16, num);
-					break;
-				}
-				case 9:
-				{
-					if (stream.Position + 4 > num)
-					{
-						return;
-					}
-					int num3 = reader.ReadInt32();
-					if (num3 < 0 || num3 > 65536)
-					{
-						return;
-					}
-					SkipBytes(stream, num3, num);
-					break;
-				}
-				default:
-					flag = false;
-					break;
-				case 2:
-					break;
-				}
-			}
-			if (stream.Position + 440 + 28 + 4 > num)
-			{
-				stream.Position = Math.Min(num, position + 1);
-				continue;
-			}
-			DemoFrame demoFrame = ReadDemoFrame(reader);
-			SkipBytes(stream, 28, num);
-			int num5 = reader.ReadInt32();
-			if (num5 < 0 || num5 > 65536 || stream.Position + num5 > num)
-			{
-				break;
-			}
-			SkipBytes(stream, num5, num);
-			AccumulateDemoFrame(result, previous, demoFrame);
-			previous = demoFrame;
-		}
-	}
-
-	private static DemoFrame ReadDemoFrame(BinaryReader reader)
-	{
-		byte[] array = reader.ReadBytes(440);
-		if (array.Length < 440)
-		{
-			return DemoFrame.Empty;
-		}
-		return new DemoFrame(BitConverter.ToSingle(array, 0), BitConverter.ToSingle(array, 244), BitConverter.ToSingle(array, 248), BitConverter.ToSingle(array, 252), BitConverter.ToSingle(array, 256), BitConverter.ToSingle(array, 260), BitConverter.ToSingle(array, 264), BitConverter.ToUInt16(array, 270), BitConverter.ToSingle(array, 164), BitConverter.ToSingle(array, 168), BitConverter.ToSingle(array, 172));
-	}
-
-	private static void AccumulateDemoFrame(DemoBehaviorResult result, DemoFrame? previous, DemoFrame frame)
-	{
-		if (frame.Time <= 0f && result.Frames > 10)
-		{
-			return;
-		}
-		result.Frames++;
-		result.DurationSeconds = Math.Max(result.DurationSeconds, frame.Time);
-		bool flag = (frame.Buttons & 1) != 0;
-		bool flag2 = (frame.Buttons & 2) != 0;
-		double num = Math.Sqrt(frame.ForwardMove * frame.ForwardMove + frame.SideMove * frame.SideMove);
-		if (flag)
-		{
-			result.AttackFrames++;
-			double num2 = Math.Sqrt(frame.PunchX * frame.PunchX + frame.PunchY * frame.PunchY + frame.PunchZ * frame.PunchZ);
-			result.PunchSamples++;
-			result.PunchTotal += num2;
-			if (num2 < 0.02)
-			{
-				result.ZeroPunchAttackFrames++;
-			}
-		}
-		if (flag2 && num > 240.0)
-		{
-			result.JumpMoveFrames++;
-		}
-		if (Math.Abs(frame.ForwardMove) > 450f || Math.Abs(frame.SideMove) > 450f || Math.Abs(frame.UpMove) > 450f)
-		{
-			result.InvalidMoveFrames++;
-		}
-		if (!previous.HasValue)
-		{
-			result.PreviousAttack = flag;
-			return;
-		}
-		double num3 = Math.Max(0.001, frame.Time - previous.Value.Time);
-		if (num3 > 1.0)
-		{
-			result.PreviousAttack = flag;
-			return;
-		}
-		float num4 = Math.Abs(frame.ViewPitch - previous.Value.ViewPitch);
-		double num5 = Math.Abs(NormalizeAngleDelta(frame.ViewYaw - previous.Value.ViewYaw));
-		double num6 = Math.Sqrt((double)(num4 * num4) + num5 * num5);
-		result.AngleDeltaTotal += num6;
-		result.AngleSamples++;
-		if (num6 > result.MaxAngleDelta)
-		{
-			result.MaxAngleDelta = num6;
-		}
-		if (flag && num6 >= 30.0 && num3 <= 0.12)
-		{
-			result.AttackSnapFrames++;
-			result.AttackSnapDeltaTotal += num6;
-		}
-		if (flag && !result.PreviousAttack)
-		{
-			result.AttackPresses++;
-			if (num6 < 0.08)
-			{
-				result.MicroAngleAttackPresses++;
-			}
-		}
-		result.PreviousAttack = flag;
-	}
-
-	private static string BuildDemoBehaviorOutput(DemoBehaviorResult result)
-	{
-		List<string> list = new List<string> { $"[INFO] Integrated demo scan: {Path.GetFileName(result.Path)} frames={result.Frames} duration={result.DurationSeconds:0.0}s attacks={result.AttackPresses} snaps={result.AttackSnapFrames} maxAngle={result.MaxAngleDelta:0.0}" };
-		if (!result.Valid || result.Frames < 250)
-		{
-			list.Add("[INFO] Demo too short or invalid for AIM/TRIGGER behavioral verdict.");
-			return string.Join("\n", list);
-		}
-		double num = ((result.AttackSnapFrames > 0) ? (result.AttackSnapDeltaTotal / (double)result.AttackSnapFrames) : 0.0);
-		double num2 = ((result.AttackPresses > 0) ? ((double)result.MicroAngleAttackPresses / (double)result.AttackPresses) : 0.0);
-		double num3 = ((result.AttackFrames > 0) ? ((double)result.ZeroPunchAttackFrames / (double)result.AttackFrames) : 0.0);
-		double num4 = ((result.Frames > 0) ? ((double)result.JumpMoveFrames / (double)result.Frames) : 0.0);
-		if (result.AttackSnapFrames >= 8 && num >= 35.0 && result.MaxAngleDelta >= 80.0)
-		{
-			list.Add("[DETECTED] [AIM TYPE 1. Integrated ACS demo behavior: repeated high-angle aim snaps on attack]");
-		}
-		else if (result.AttackSnapFrames >= 4 && num >= 28.0)
-		{
-			list.Add("[WARNING] [AIM TYPE 1. Integrated ACS demo behavior: suspicious aim snaps on attack]");
-		}
-		if (result.AttackPresses >= 20 && num2 >= 0.9)
-		{
-			list.Add("[DETECTED] [TRIGGER TYPE 1. Integrated ACS demo behavior: repeated perfect attack presses with near-zero aim movement]");
-		}
-		else if (result.AttackPresses >= 12 && num2 >= 0.75)
-		{
-			list.Add("[WARNING] [TRIGGER TYPE 1. Integrated ACS demo behavior: attack timing requires review]");
-		}
-		if (result.AttackFrames >= 30 && num3 >= 0.95)
-		{
-			list.Add("[WARNING] [NORECOIL TYPE 1. Integrated ACS demo behavior: recoil/punch angle nearly zero while firing]");
-		}
-		if (result.InvalidMoveFrames >= 5)
-		{
-			list.Add("[DETECTED] [MOVEMENT HACK TYPE 1. Integrated ACS demo behavior: impossible usercmd movement values]");
-		}
-		else if (result.JumpMoveFrames >= 120 && num4 >= 0.2)
-		{
-			list.Add("[WARNING] [SGS SCRIPT TYPE 1. Integrated ACS demo behavior: repeated jump+strafe movement pattern]");
-		}
-		return string.Join("\n", list);
 	}
 
 	private static string BuildLiveBehaviorOutput(LiveBehaviorResult result)
@@ -2273,38 +1788,6 @@ public static class ScannerEngine
 		}
 		list.Add($"[INFO] Cursor-derived ratios (not a verdict): lowMove={value2:P0} snap={value3:P0} jumpStrafe={value4:P0}");
 		return string.Join("\n", list);
-	}
-
-	private static void AddLiveBehaviorFindings(LiveBehaviorResult result, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, string time)
-	{
-	}
-
-	private static void SkipBytes(Stream stream, int count, long end)
-	{
-		if (count > 0)
-		{
-			stream.Position = Math.Min(end, stream.Position + count);
-		}
-	}
-
-	private static string ReadFixedAscii(BinaryReader reader, int count)
-	{
-		byte[] array = reader.ReadBytes(count);
-		int num = Array.IndexOf(array, (byte)0);
-		return Encoding.ASCII.GetString(array, 0, (num < 0) ? array.Length : num).Trim();
-	}
-
-	private static double NormalizeAngleDelta(double value)
-	{
-		while (value > 180.0)
-		{
-			value -= 360.0;
-		}
-		while (value < -180.0)
-		{
-			value += 360.0;
-		}
-		return value;
 	}
 
 	private static List<(string Name, long Base, long Size)> ModuleRangesFor(List<Dictionary<string, object?>> modules)
@@ -3000,12 +2483,12 @@ public static class ScannerEngine
 				string text2;
 				if (text == "DETECTED")
 				{
-					bool flag = ((source == "demo-file" || source == "live-behavior") ? true : false);
+					bool flag = (source == "live-behavior");
 					text2 = (flag ? "High-confidence integrated behavior evidence." : "High-confidence live client evidence.");
 				}
 				else
 				{
-					bool flag = ((source == "demo-file" || source == "live-behavior") ? true : false);
+					bool flag = (source == "live-behavior");
 					text2 = (flag ? "Integrated live behavior review evidence." : "Review evidence only. ACS does not call this a cheat without live module/driver evidence.");
 				}
 				string value = text2;
@@ -3040,82 +2523,123 @@ public static class ScannerEngine
 		return (matched, hashLength, severity, rule.Valid);
 	}
 
+	private static bool IsHashCondition(string key)
+	{
+		switch (key)
+		{
+		case "sha256":
+		case "hash_sha256":
+		case "sha1":
+		case "hash_sha1":
+		case "md5":
+		case "hash_md5":
+		case "file_md5hash":
+		case "file_hash":
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Evaluates signature match using "Hash OR Name, not AND" semantics.
+	/// A renamed cheat matching a known cryptographic hash hits as authoritative DETECTED.
+	/// A file matching a filename or path regex without a verified hash hits only as review WARNING.
+	/// </summary>
 	private static bool RuleConditionsMatch(CompiledRule rule, string source, string surface, string lowSurface, string hashSurface, out int matchedHashLength)
 	{
 		matchedHashLength = 0;
-		int applicable = 0;
+		List<MatchCondition> hashConditions = new List<MatchCondition>();
+		List<MatchCondition> patternConditions = new List<MatchCondition>();
+
 		foreach (MatchCondition condition in rule.Conditions)
 		{
 			if (!MatchKeyAppliesToSource(condition.Key, source))
 			{
 				continue;
 			}
-			applicable++;
-			bool flag;
-			switch (condition.Key)
+			if (IsHashCondition(condition.Key))
 			{
-			case "sha256":
-			case "hash_sha256":
-			case "sha1":
-			case "hash_sha1":
-			case "md5":
-			case "hash_md5":
-			case "file_md5hash":
-			case "file_hash":
-				flag = true;
-				break;
-			default:
-				flag = false;
-				break;
+				hashConditions.Add(condition);
 			}
-			if (flag)
+			else
 			{
-				string[] actual = hashSurface.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-				if (!HashValueMatches(condition.Values, actual, out int conditionHashLength))
+				patternConditions.Add(condition);
+			}
+		}
+
+		if (hashConditions.Count == 0 && patternConditions.Count == 0)
+		{
+			return false;
+		}
+
+		// 1. Hash matching: cryptographic hash of the artifact is ban-grade proof
+		if (hashConditions.Count > 0 && !string.IsNullOrWhiteSpace(hashSurface))
+		{
+			string[] actual = hashSurface.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+			foreach (MatchCondition condition in hashConditions)
+			{
+				if (HashValueMatches(condition.Values, actual, out int conditionHashLength))
 				{
-					return false;
+					matchedHashLength = Math.Max(matchedHashLength, conditionHashLength);
 				}
-				matchedHashLength = Math.Max(matchedHashLength, conditionHashLength);
-				continue;
 			}
-			if (condition.IsRegex)
+			if (matchedHashLength > 0)
 			{
-				bool conditionMatched = false;
-				foreach (Regex regex in condition.Regexes)
+				return true;
+			}
+		}
+
+		// 2. Pattern matching: filenames, paths, strings are review-grade evidence
+		bool matchedPattern = false;
+		if (patternConditions.Count > 0)
+		{
+			foreach (MatchCondition condition in patternConditions)
+			{
+				if (condition.IsRegex)
 				{
-					try
+					foreach (Regex regex in condition.Regexes)
 					{
-						if (regex.IsMatch(surface))
+						try
 						{
-							conditionMatched = true;
+							if (regex.IsMatch(surface))
+							{
+								matchedPattern = true;
+								break;
+							}
+						}
+						catch (RegexMatchTimeoutException)
+						{
+						}
+					}
+				}
+				else
+				{
+					foreach (string value in condition.Values)
+					{
+						if (value.Length > 0 && lowSurface.IndexOf(value, StringComparison.Ordinal) >= 0)
+						{
+							matchedPattern = true;
 							break;
 						}
 					}
-					catch (RegexMatchTimeoutException)
-					{
-					}
 				}
-				if (!conditionMatched)
+				if (matchedPattern)
 				{
-					return false;
-				}
-				continue;
-			}
-			bool valueMatched = false;
-			foreach (string value in condition.Values)
-			{
-				if (value.Length > 0 && lowSurface.IndexOf(value, StringComparison.Ordinal) >= 0)
-				{
-					valueMatched = true;
 					break;
 				}
 			}
-			if (!valueMatched)
-			{
-				return false;
-			}
 		}
-		return applicable > 0;
+
+		if (matchedPattern)
+		{
+			// Name-only match without verified hash: matchedHashLength = 0 ensures
+			// IsStrongEvidence evaluates to false, downgrading any DETECTED rule to WARNING.
+			matchedHashLength = 0;
+			return true;
+		}
+
+		return false;
 	}
 
 	/// <summary>
@@ -3222,7 +2746,6 @@ public static class ScannerEngine
 			"process" => "injected",
 			"hl-file" => "loaded",
 			"live-behavior" => "behavioral", 
-			"demo-file" => "behavioral", 
 			"execution-trace" => "previouslyLaunched", 
 			"driver" => "installedInOs", 
 			"download-trace" => "downloaded", 
@@ -3327,7 +2850,7 @@ public static class ScannerEngine
 	{
 		if (key.StartsWith("output_", StringComparison.OrdinalIgnoreCase))
 		{
-			return (source == "demo-file" || source == "live-behavior") ? true : false;
+			return source == "live-behavior";
 		}
 		if (key.StartsWith("config_", StringComparison.OrdinalIgnoreCase))
 		{
@@ -3340,7 +2863,6 @@ public static class ScannerEngine
 			{
 			case "hl-file":
 			case "hl-config":
-			case "demo-file":
 			case "live-behavior":
 				result = true;
 				break;
@@ -3361,7 +2883,6 @@ public static class ScannerEngine
 			case "execution-trace":
 			case "game-process":
 			case "memory":
-			case "demo-file":
 			case "live-behavior":
 				result = true;
 				break;
@@ -3382,7 +2903,6 @@ public static class ScannerEngine
 			case "execution-trace":
 			case "game-process":
 			case "hl-file":
-			case "demo-file":
 			case "live-behavior":
 				result = true;
 				break;
@@ -3832,73 +3352,6 @@ public static class ScannerEngine
 			yield return Path.Combine(profile, "Downloads");
 			yield return Path.Combine(profile, "Desktop");
 		}
-	}
-
-	private static string DetectGameBuild(List<Dictionary<string, object?>> modules, string gameRoot, string windowTitle)
-	{
-		List<string> list = (from m in modules
-			select Convert.ToString(m.GetValueOrDefault("name")) ?? "" into s
-			where s.Length > 0
-			select s).ToList();
-		string surface = string.Join(" ", list) + " " + gameRoot + " " + windowTitle;
-		if (ContainsAny(surface, "nextclient", "nitro_api", "next_engine", "next_lib", "filesystem_proxy"))
-		{
-			return "Counter-Strike: 1.6 (NextClient / Non-Steam)";
-		}
-		if (ContainsAny(surface, "gsclient"))
-		{
-			return "Counter-Strike: 1.6 (GSClient / Non-Steam)";
-		}
-		if (ContainsAny(surface, "goldclient", "goldsrc.dll"))
-		{
-			return "Counter-Strike: 1.6 (GoldClient / Non-Steam)";
-		}
-		if (ContainsAny(surface, "revemu", "rev_emu", "revloader", "revcrew", "rev.ini"))
-		{
-			return "Counter-Strike: 1.6 (RevEmu / RevCrew / Non-Steam)";
-		}
-		if (ContainsAny(surface, "smartsteamemu", "sselauncher", "smartsteamloader", "sse.ini"))
-		{
-			return "Counter-Strike: 1.6 (SmartSteamEmu / Non-Steam)";
-		}
-		if (ContainsAny(surface, "goldberg", "steam_settings", "libsteam_api"))
-		{
-			return "Counter-Strike: 1.6 (Goldberg emulator / Non-Steam)";
-		}
-		if (ContainsAny(surface, "cream_api", "creamapi"))
-		{
-			return "Counter-Strike: 1.6 (CreamAPI / Non-Steam)";
-		}
-		if (ContainsAny(surface, "greenluma", "dllinjector"))
-		{
-			return "Counter-Strike: 1.6 (GreenLuma / Non-Steam)";
-		}
-		if (ContainsAny(surface, "platinum.ini", "platinum_emu", "platinumemu"))
-		{
-			return "Counter-Strike: 1.6 (Platinum emulator / Non-Steam)";
-		}
-		if (ContainsAny(surface, "crackedsteam"))
-		{
-			return "Counter-Strike: 1.6 (CrackedSteam / Non-Steam)";
-		}
-		if (ContainsAny(surface, "steamless", "steam_emu", "steamemu"))
-		{
-			return "Counter-Strike: 1.6 (Steam emulator / Non-Steam)";
-		}
-		if (ContainsAny(surface, "multiemulator", "multiemu", "avsmp", "avs.dll"))
-		{
-			return "Counter-Strike: 1.6 (MultiEmulator / Non-Steam)";
-		}
-		if (ContainsAny(surface, "reunion_mm", "dproto", "dproto_mm", "reapi_amxx", "amxmodx_mm", "regamedll", "swds.dll"))
-		{
-			return "Counter-Strike: 1.6 (ReHLDS / DProto server platform)";
-		}
-		return (list.Any((string n) => string.Equals(n, "steamclient.dll", StringComparison.OrdinalIgnoreCase)) || !string.IsNullOrWhiteSpace(ReadSteamPath())) ? "Counter-Strike: 1.6 (Steam)" : "Counter-Strike: 1.6 (No Steam)";
-	}
-
-	private static bool ContainsAny(string surface, params string[] needles)
-	{
-		return needles.Any((string n) => surface.Contains(n, StringComparison.OrdinalIgnoreCase));
 	}
 
 	/// <summary>

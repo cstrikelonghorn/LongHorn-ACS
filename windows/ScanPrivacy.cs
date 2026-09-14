@@ -18,7 +18,7 @@ internal static class ScanPrivacy
 {
     /// <summary>Plain-text form of the notice, for anywhere it has to be shown as text.</summary>
     internal const string Disclosure =
-        "ACS scans only after you choose Start scan. It inspects the running game, its loaded modules, drivers, other processes, game files and configs, and recent launch, download and deletion traces. It briefly samples game input, and queries the game server via Valve A2S protocol to identify the server you are joined to. ACS runs in user space without requiring administrator rights. Nothing on your PC is changed.\r\n\r\n" +
+        "ACS scans only after you choose Start scan. It inspects the running game, its loaded modules, drivers, other processes, game files and configs, and recent launch, download and deletion traces. It briefly samples game input, and queries the game server via Valve A2S protocol to identify the server you are joined to. Stay joined to your match server during the scan so the admin can verify your session. ACS runs in user space without requiring administrator rights. Nothing on your PC is changed.\r\n\r\n" +
         "The report can contain player and Steam identifiers, machine name, device fingerprint, file paths, hashes, game server details, memory strings and findings. The receiving server also sees your IP address.\r\n\r\n" +
         "The report is uploaded automatically as soon as the scan finishes. Choose Cancel now if you do not want it sent.\r\n\r\n" +
         "The server operator controls who can view reports and how long they are kept. This client cannot delete a report after upload. Only scan for a server you trust. This build is not independently audited or code-signed.";
@@ -59,7 +59,7 @@ internal sealed class PrivacyForm : Form
     private static readonly Section[] Sections =
     {
         new(Mark.Scan, "WHAT IS CHECKED",
-            "The running game, its modules, drivers, other processes, game files and configs, and recent launch, download and deletion traces. The game server is queried directly via Valve A2S protocol to identify the server you are on. Nothing on your PC is changed.", false),
+            "The running game, its modules, drivers, other processes, game files and configs, and recent launch, download and deletion traces. The game server is queried directly via Valve A2S protocol to identify the server you are on. Stay joined to your match server while scanning for admin verification. Nothing on your PC is changed.", false),
         new(Mark.Report, "WHAT THE REPORT CONTAINS",
             "Player and Steam identifiers, machine name, device fingerprint, file paths, hashes, game server details, memory strings and findings. The server also sees your IP address.", false),
         // The one fact a player must not miss: there is no later step at which to say no.
