@@ -6,8 +6,8 @@
     <PlatformTarget>x86</PlatformTarget>
     <Nullable>enable</Nullable>
     <AssemblyName>ACPScanner</AssemblyName>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Version>1.0.1</Version>
+    <AssemblyVersion>1.0.1.0</AssemblyVersion>
     <!-- Shown in the exe's Properties > Details; without these every field reads "ACPScanner". -->
     <Company>LongHorn</Company>
     <Product>LongHorn ACS Scanner</Product>
