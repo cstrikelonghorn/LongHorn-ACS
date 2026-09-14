@@ -668,6 +668,14 @@ public sealed class MainForm : Form
     private Rectangle _poweredRect;
     private bool _poweredHot;
     private const string BrandUrl = "https://www.cslonghorn.com";
+
+    // In-app update check state
+    private bool _updateAvailable;
+    private string _latestVersion = "";
+    private Rectangle _updateRect;
+    private bool _updateHot;
+    private const string DownloadUrl = "https://cslonghorn.com/acs/download.php";
+
     private readonly System.Windows.Forms.Timer _fx = new() { Interval = 40 };
     private double _t;                  // master animation clock, seconds
     private float _verdictFade = 1f;    // 0..1, eases in on every verdict change
@@ -743,6 +751,7 @@ public sealed class MainForm : Form
             Invalidate();
         };
         _fx.Start();
+        _ = CheckForUpdatesAsync();
     }
 
     /// <summary>
@@ -1020,6 +1029,7 @@ public sealed class MainForm : Form
         {
             if (_closeRect.Contains(e.Location)) { Close(); return; }
             if (_minRect.Contains(e.Location)) { WindowState = FormWindowState.Minimized; return; }
+            if (_updateAvailable && _updateRect.Contains(e.Location)) { BrowserLink.Open(DownloadUrl); return; }
             if (_poweredRect.Contains(e.Location)) { OpenBrandSite(); return; }
             if (e.Y <= S(42)) { _dragging = true; _dragFrom = e.Location; }
         }
@@ -1037,12 +1047,14 @@ public sealed class MainForm : Form
             var c = _closeRect.Contains(e.Location);
             var m = _minRect.Contains(e.Location);
             var pw = _poweredRect.Contains(e.Location);
-            if (c != _closeHot || m != _minHot || pw != _poweredHot)
+            var u = _updateAvailable && _updateRect.Contains(e.Location);
+            if (c != _closeHot || m != _minHot || pw != _poweredHot || u != _updateHot)
             {
                 _closeHot = c;
                 _minHot = m;
                 _poweredHot = pw;
-                Cursor = pw ? Cursors.Hand : Cursors.Default;
+                _updateHot = u;
+                Cursor = (pw || u) ? Cursors.Hand : Cursors.Default;
                 Invalidate();
             }
         }
@@ -1463,6 +1475,36 @@ public sealed class MainForm : Form
         Txt.DrawCentered(g, pillText, _fMonoSm,
             new RectangleF(pill.X + S(15), pill.Y, pill.Width - S(19), pill.Height),
             AcpTheme.Fade(MoodColor, 235));
+
+        if (_updateAvailable)
+        {
+            var badgeX = pill.Right + S(10);
+            var badgeW = S(135);
+            var badgeH = S(19);
+            _updateRect = new Rectangle(badgeX, (int)(my - S(9)), badgeW, badgeH);
+
+            using (var path = AcpTheme.RoundedRect(_updateRect, S(10)))
+            using (var fill = new SolidBrush(_updateHot ? Color.FromArgb(200, 48, 36, 12) : Color.FromArgb(140, 30, 22, 10)))
+            using (var pen = new Pen(_updateHot ? AcpTheme.GoldBright : AcpTheme.GoldDim, 1f))
+            {
+                g.FillPath(fill, path);
+                g.DrawPath(pen, path);
+            }
+
+            var upPulse = (float)(0.6 + 0.4 * Math.Sin(_t * 3.5));
+            using (var dot = new SolidBrush(AcpTheme.Fade(AcpTheme.GoldBright, (int)(150 + 105 * upPulse))))
+            {
+                g.FillEllipse(dot, _updateRect.X + S(8), _updateRect.Y + S(6), S(6), S(6));
+            }
+
+            Txt.DrawCentered(g, $"UPDATE: v{_latestVersion}", _fMonoSm,
+                new RectangleF(_updateRect.X + S(15), _updateRect.Y, _updateRect.Width - S(17), _updateRect.Height),
+                _updateHot ? AcpTheme.GoldBright : AcpTheme.Gold);
+        }
+        else
+        {
+            _updateRect = Rectangle.Empty;
+        }
 
         // Window buttons.
         var btn = S(30);
@@ -2005,6 +2047,55 @@ public sealed class MainForm : Form
         // Opened with the player's normal rights, never elevated; if it fails, the report URL
         // is still in the evidence log.
         BrowserLink.Open(url);
+    }
+
+    /// <summary>
+    /// Non-blocking check for desktop scanner updates from the web release directory.
+    /// Runs silently in the background on startup; never interferes with offline scanning.
+    /// </summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var (apiUrl, _) = GetApiSettings();
+            var versionUrl = "https://cslonghorn.com/acs/windows/release/version.txt";
+            if (Uri.TryCreate(apiUrl, UriKind.Absolute, out var uri))
+            {
+                var basePath = uri.GetLeftPart(UriPartial.Path);
+                var lastSlash = basePath.LastIndexOf('/');
+                if (lastSlash > 0)
+                {
+                    versionUrl = basePath.Substring(0, lastSlash) + "/windows/release/version.txt";
+                }
+            }
+
+            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            client.DefaultRequestHeaders.Add("User-Agent", "ACS-Scanner/" + ScannerEngine.Version);
+            var remoteText = await client.GetStringAsync(versionUrl).ConfigureAwait(false);
+            var remoteVerStr = remoteText.Trim().Split('-', '+')[0];
+
+            if (System.Version.TryParse(remoteVerStr, out var remoteVer) &&
+                System.Version.TryParse(ScannerEngine.Version, out var localVer))
+            {
+                if (remoteVer > localVer)
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            _updateAvailable = true;
+                            _latestVersion = remoteVerStr;
+                            AppendLog(LogLevel.Stage, $"UPDATE AVAILABLE: v{_latestVersion} is out! Click the update badge to download.");
+                            Invalidate();
+                        }));
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fail silently: offline, DNS error, or timeout must never hinder startup
+        }
     }
 }
 

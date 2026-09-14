@@ -109,6 +109,18 @@ $acpConfig = [
     // hardcode it here: this file ships with the site and a leaked key lets anyone
     // burn the account's daily request quota.
     'virustotalApiKey' => acs_env('VIRUSTOTAL_API_KEY'),
+
+    // Rate limiting for API endpoints (e.g. upload_report, submit_sample).
+    'rateLimits' => [
+        'upload_report' => [
+            'limit' => (int) (acs_env('RATE_LIMIT_UPLOAD_LIMIT') ?: 10),
+            'window' => (int) (acs_env('RATE_LIMIT_UPLOAD_WINDOW') ?: 60),
+        ],
+        'submit_sample' => [
+            'limit' => (int) (acs_env('RATE_LIMIT_SAMPLE_LIMIT') ?: 15),
+            'window' => (int) (acs_env('RATE_LIMIT_SAMPLE_WINDOW') ?: 60),
+        ],
+    ],
 ];
 
 // Report integrity: the ACS desktop client HMAC-signs the serialized report so a report body
@@ -241,6 +253,30 @@ function acp_verify_report_signature(string $payload, string $signature, string 
     return hash_equals(acp_sign_report($payload, $secret), $signature);
 }
 
+function acs_client_ip(): string
+{
+    $cf = trim((string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
+    if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP)) {
+        return $cf;
+    }
+
+    $xff = trim((string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
+    if ($xff !== '') {
+        $parts = explode(',', $xff);
+        $client = trim($parts[0] ?? '');
+        if ($client !== '' && filter_var($client, FILTER_VALIDATE_IP)) {
+            return $client;
+        }
+    }
+
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if ($remote !== '' && filter_var($remote, FILTER_VALIDATE_IP)) {
+        return $remote;
+    }
+
+    return $remote !== '' ? $remote : '127.0.0.1';
+}
+
 function acp_require_upload_auth(array $config): void
 {
     $expected = (string) ($config['apiToken'] ?? '');
@@ -255,12 +291,128 @@ function acp_require_upload_auth(array $config): void
 
     // A public dashboard opens reading reports, never writing them: without a token anyone
     // could post a fabricated report against any SteamID.
-    $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+    $remote = acs_client_ip();
     if (in_array($remote, ['127.0.0.1', '::1', ''], true)) {
         return;
     }
 
     acp_json_response(['ok' => false, 'error' => 'Unauthorized report upload'], 401);
+}
+
+/**
+ * Sliding-window rate limiter per client IP and action.
+ *
+ * Excludes localhost and CLI to prevent blocking automated test suites or local development.
+ * Uses atomic file locking (flock) on tracking files stored in reportsDir/.ratelimit.
+ */
+function acs_require_rate_limit(string $action, int $defaultLimit = 10, int $defaultWindow = 60, ?array $config = null): void
+{
+    if (PHP_SAPI === 'cli') {
+        return;
+    }
+
+    $ip = acs_client_ip();
+    if (in_array($ip, ['127.0.0.1', '::1', ''], true)) {
+        return;
+    }
+
+    global $acpConfig;
+    $cfg = $config ?? $acpConfig ?? [];
+    $limit = (int) ($cfg['rateLimits'][$action]['limit'] ?? $defaultLimit);
+    $windowSeconds = (int) ($cfg['rateLimits'][$action]['window'] ?? $defaultWindow);
+
+    if ($limit <= 0 || $windowSeconds <= 0) {
+        return;
+    }
+
+    $reportsDir = (string) ($cfg['reportsDir'] ?? (__DIR__ . '/reports'));
+    $limitDir = $reportsDir . '/.ratelimit';
+
+    if (!is_dir($limitDir) && !@mkdir($limitDir, 0755, true) && !is_dir($limitDir)) {
+        return; // Fail open if filesystem cannot create rate limit directory
+    }
+
+    // Probabilistic garbage collection (1/100 requests) to prune tracking files older than 2 hours
+    if (mt_rand(1, 100) === 1) {
+        $files = @glob($limitDir . '/*.json');
+        if (is_array($files)) {
+            $staleThreshold = time() - 7200;
+            foreach ($files as $f) {
+                if (@filemtime($f) < $staleThreshold) {
+                    @unlink($f);
+                }
+            }
+        }
+    }
+
+    $key = hash('sha256', $action . ':' . $ip);
+    $filePath = $limitDir . '/' . $key . '.json';
+
+    $fp = @fopen($filePath, 'c+');
+    if (!$fp) {
+        return;
+    }
+
+    if (!@flock($fp, LOCK_EX)) {
+        @fclose($fp);
+        return;
+    }
+
+    $now = time();
+    $cutoff = $now - $windowSeconds;
+
+    $contents = '';
+    $stat = @fstat($fp);
+    if ($stat && ($stat['size'] ?? 0) > 0) {
+        $contents = (string) @stream_get_contents($fp);
+    }
+
+    $timestamps = [];
+    if ($contents !== '') {
+        $decoded = @json_decode($contents, true);
+        if (is_array($decoded)) {
+            foreach ($decoded as $ts) {
+                if (is_int($ts) && $ts > $cutoff) {
+                    $timestamps[] = $ts;
+                }
+            }
+        }
+    }
+
+    $count = count($timestamps);
+    if ($count >= $limit) {
+        $oldest = min($timestamps);
+        $retryAfter = max(1, $windowSeconds - ($now - $oldest));
+
+        @flock($fp, LOCK_UN);
+        @fclose($fp);
+
+        if (!headers_sent()) {
+            header('Retry-After: ' . $retryAfter);
+            header('X-RateLimit-Limit: ' . $limit);
+            header('X-RateLimit-Remaining: 0');
+            header('X-RateLimit-Reset: ' . ($now + $retryAfter));
+        }
+
+        acp_json_response([
+            'ok' => false,
+            'error' => 'Rate limit exceeded for ' . $action . '. Please wait ' . $retryAfter . ' seconds before trying again.'
+        ], 429);
+    }
+
+    $timestamps[] = $now;
+    @ftruncate($fp, 0);
+    @rewind($fp);
+    @fwrite($fp, json_encode($timestamps));
+    @fflush($fp);
+    @flock($fp, LOCK_UN);
+    @fclose($fp);
+
+    if (!headers_sent()) {
+        header('X-RateLimit-Limit: ' . $limit);
+        header('X-RateLimit-Remaining: ' . max(0, $limit - count($timestamps)));
+        header('X-RateLimit-Reset: ' . ($now + $windowSeconds));
+    }
 }
 
 /**

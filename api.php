@@ -151,6 +151,7 @@ try {
 
     if ($action === 'upload_report') {
         acp_require_upload_auth($acpConfig);
+        acs_require_rate_limit('upload_report', 10, 60, $acpConfig);
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             acp_json_response(['ok' => false, 'error' => 'POST required'], 405);
         }

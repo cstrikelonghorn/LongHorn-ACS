@@ -4456,6 +4456,8 @@ public static class ScannerEngine
 	[DllImport("user32.dll")]
 	private static extern bool SetForegroundWindow(nint hWnd);
 
+	public static string Version => ScannerVersion;
+
 	/// <summary>
 	/// The version from the project file - one source, instead of a string literal in the
 	/// report that had to be edited by hand and was not.

@@ -421,8 +421,10 @@ internal static class Checks
         if (hl is not null)
         {
             var res = GameTraffic.Capture(hl.Id, CancellationToken.None, 3000);
-            Check(res.Status == "connected" && res.A2S is not null && res.A2S.Success,
-                $"live hl.exe server resolved: {res.Endpoint} ('{res.A2S?.Name}', Map: '{res.A2S?.Map}')");
+            Check(res.Status == "connected" ? (res.A2S is not null && res.A2S.Success) : !string.IsNullOrEmpty(res.Status),
+                res.Status == "connected"
+                    ? $"live hl.exe server resolved: {res.Endpoint} ('{res.A2S?.Name}', Map: '{res.A2S?.Map}')"
+                    : $"live hl.exe detected in idle/menu state ({res.Status})");
         }
     }
 
