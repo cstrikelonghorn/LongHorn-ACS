@@ -57,6 +57,9 @@ public sealed class ServerConnectionMonitor : IDisposable
     private bool _disposed;
     private int _sequenceNumber;
     private string? _initialEndpoint;
+    private string? _cachedServerName;
+    private string? _cachedServerMap;
+    private int _cachedPlayers;
     private int _disconnectionEvents;
 
     public ServerConnectionMonitor(int processId, CancellationToken cancellationToken)
@@ -116,6 +119,10 @@ public sealed class ServerConnectionMonitor : IDisposable
             // Build chain hash
             var chainHash = ComputeChainHash(_proofPoints);
 
+            var finalEndpoint = lastConnected?.Endpoint ?? _initialEndpoint ?? "";
+            var finalServerName = _proofPoints.FirstOrDefault(p => !string.IsNullOrEmpty(p.ServerName))?.ServerName ?? _cachedServerName ?? "";
+            var finalServerMap = _proofPoints.FirstOrDefault(p => !string.IsNullOrEmpty(p.ServerMap))?.ServerMap ?? _cachedServerMap ?? "";
+
             return new EvidenceChain(
                 SessionId: _sessionId,
                 ScanStarted: scanStarted,
@@ -123,9 +130,9 @@ public sealed class ServerConnectionMonitor : IDisposable
                 ProofPoints: _proofPoints.ToList(),
                 ChainHash: chainHash,
                 FinalStatus: finalStatus,
-                FinalEndpoint: lastConnected?.Endpoint ?? "",
-                FinalServerName: lastConnected?.ServerName ?? "",
-                FinalServerMap: lastConnected?.ServerMap ?? "",
+                FinalEndpoint: finalEndpoint,
+                FinalServerName: finalServerName,
+                FinalServerMap: finalServerMap,
                 ConsistentConnection: consistentConnection,
                 DisconnectionEvents: _disconnectionEvents);
         }
@@ -155,87 +162,27 @@ public sealed class ServerConnectionMonitor : IDisposable
             string status = "not-connected";
             string reason = "no connection evidence found";
 
-            var peers = GameTraffic.ConnectedUdpPeersOf(_processId);
-            if (peers.Count > 0)
+            // Authoritative server connection inspection via GameTraffic
+            var traffic = GameTraffic.Capture(_processId, _cancellationToken, sampleMilliseconds: 1000);
+            status = traffic.Status;
+            endpoint = traffic.Endpoint;
+            reason = $"{traffic.Reason} ({trigger})";
+
+            if (traffic.A2S is { Success: true } a2s)
             {
-                // Prefer the standard Counter-Strike port range when several sockets exist.
-                var best = peers
-                    .OrderByDescending(p => p.RemotePort is >= 27015 and <= 27030)
-                    .ThenByDescending(p => p.RemotePort == 27015)
-                    .First();
-
-                endpoint = best.Endpoint;
-                status = "connected";
-                reason = $"live OS UDP endpoint ({trigger})";
-                memoryHash = ComputeHash(string.Join(";", peers.Select(p => p.Endpoint).OrderBy(e => e)));
-
-                var a2s = ValveA2S.Query(best.Endpoint, timeoutMs: 500);
-                if (a2s.Success)
-                {
-                    serverName = a2s.Name;
-                    serverMap = a2s.Map;
-                    players = a2s.Players;
-                    a2sHash = ComputeHash($"{a2s.Name}|{a2s.Map}|{a2s.Players}|{a2s.MaxPlayers}");
-                }
+                serverName = _cachedServerName = a2s.Name;
+                serverMap = _cachedServerMap = a2s.Map;
+                players = _cachedPlayers = a2s.Players;
+                a2sHash = ComputeHash($"{a2s.Name}|{a2s.Map}|{a2s.Players}|{a2s.MaxPlayers}");
             }
-            else if (ports.Count > 0)
+            else if (!string.IsNullOrEmpty(_cachedServerName))
             {
-                // Fallback: read the connection strings the engine prints to its console.
-                var handle = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, _processId);
-                if (handle != IntPtr.Zero)
-                {
-                    try
-                    {
-                        var (accepted, candidates, hasDisconnected) = ScanMemoryForEndpoints(handle);
-
-                        if (!string.IsNullOrEmpty(accepted) && !hasDisconnected)
-                        {
-                            endpoint = accepted;
-                            status = "connected";
-                            reason = $"active connection found ({trigger})";
-
-                            // Try A2S query
-                            var a2s = ValveA2S.Query(accepted, timeoutMs: 500);
-                            if (a2s.Success)
-                            {
-                                serverName = a2s.Name;
-                                serverMap = a2s.Map;
-                                players = a2s.Players;
-                                a2sHash = ComputeHash($"{a2s.Name}|{a2s.Map}|{a2s.Players}|{a2s.MaxPlayers}");
-                            }
-                        }
-                        else if (hasDisconnected)
-                        {
-                            status = "not-connected";
-                            reason = "disconnection detected in memory";
-                            _disconnectionEvents++;
-                        }
-                        else if (candidates.Count > 0)
-                        {
-                            // Have candidates but no accepted connection
-                            endpoint = candidates[0];
-                            status = "unverified";
-                            reason = "connection candidates found but not confirmed";
-                        }
-
-                        memoryHash = ComputeHash($"{accepted}|{string.Join(",", candidates)}|{hasDisconnected}");
-                    }
-                    finally
-                    {
-                        CloseHandle(handle);
-                    }
-                }
-                else
-                {
-                    status = "unverified";
-                    reason = "cannot open process for memory reading";
-                }
+                serverName = _cachedServerName;
+                serverMap = _cachedServerMap;
+                players = _cachedPlayers;
             }
-            else
-            {
-                status = "not-connected";
-                reason = "no UDP ports open";
-            }
+
+            memoryHash = ComputeHash($"{traffic.Status}|{traffic.Endpoint}|{string.Join(",", ports)}");
 
             // Track initial endpoint for consistency checking
             if (sequence == 1 && !string.IsNullOrEmpty(endpoint))
@@ -330,73 +277,7 @@ public sealed class ServerConnectionMonitor : IDisposable
         return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
     }
 
-    // Memory scanning helpers (simplified from GameTraffic)
-    private static readonly System.Text.RegularExpressions.Regex AcceptedRegex =
-        new(@"Connection accepted by\s+([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5})",
-            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    private static readonly string[] DisconnectPhrases =
-    [
-        "Server disconnected",
-        "Disconnecting from server",
-        "Server closed connection",
-        "Connection to server lost",
-        "Dropped from server"
-    ];
-
-    private static (string? Accepted, List<string> Candidates, bool HasDisconnected) ScanMemoryForEndpoints(IntPtr handle)
-    {
-        string? lastAccepted = null;
-        var hasDisconnected = false;
-        var candidates = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        long addr = 0x00010000;
-        const uint readableMask = PageReadWrite | PageWriteCopy | PageExecuteReadWrite | PageExecuteWriteCopy | PageReadOnly | PageExecuteRead;
-        var buffer = new byte[4 * 1024 * 1024];
-
-        while (VirtualQueryEx(handle, (IntPtr)addr, out var mbi, (UIntPtr)Marshal.SizeOf<MemoryBasicInformation>()) != UIntPtr.Zero)
-        {
-            long baseAddr = mbi.BaseAddress.ToInt64();
-            long size = (long)mbi.RegionSize.ToUInt64();
-            if (baseAddr >= 0x7FFF0000 || size <= 0) break;
-
-            bool isCommitted = mbi.State == MemCommit;
-            bool isReadable = (mbi.Protect & readableMask) != 0 && (mbi.Protect & 0x100) == 0;
-
-            if (isCommitted && isReadable && size <= 16 * 1024 * 1024)
-            {
-                int toRead = (int)Math.Min(size, buffer.Length);
-                if (ReadProcessMemory(handle, (IntPtr)baseAddr, buffer, (UIntPtr)(uint)toRead, out var read) && read.ToUInt64() > 0)
-                {
-                    int bytesRead = (int)read.ToUInt64();
-                    var text = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-
-                    var acceptedMatches = AcceptedRegex.Matches(text);
-                    if (acceptedMatches.Count > 0)
-                    {
-                        var lastMatch = acceptedMatches[^1];
-                        lastAccepted = lastMatch.Groups[1].Value;
-
-                        var acceptedPos = lastMatch.Index;
-                        foreach (var phrase in DisconnectPhrases)
-                        {
-                            var dcPos = text.IndexOf(phrase, acceptedPos, StringComparison.OrdinalIgnoreCase);
-                            if (dcPos > acceptedPos)
-                            {
-                                hasDisconnected = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            addr = baseAddr + size;
-        }
-
-        return (lastAccepted, candidates, hasDisconnected);
-    }
 
     public void Dispose()
     {
@@ -404,39 +285,4 @@ public sealed class ServerConnectionMonitor : IDisposable
         _disposed = true;
         _monitorTimer?.Dispose();
     }
-
-    // P/Invoke
-    private const uint ProcessQueryInformation = 0x0400;
-    private const uint ProcessVmRead = 0x0010;
-    private const uint MemCommit = 0x1000;
-    private const uint PageReadOnly = 0x02;
-    private const uint PageReadWrite = 0x04;
-    private const uint PageWriteCopy = 0x08;
-    private const uint PageExecuteRead = 0x20;
-    private const uint PageExecuteReadWrite = 0x40;
-    private const uint PageExecuteWriteCopy = 0x80;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MemoryBasicInformation
-    {
-        public IntPtr BaseAddress;
-        public IntPtr AllocationBase;
-        public uint AllocationProtect;
-        public UIntPtr RegionSize;
-        public uint State;
-        public uint Protect;
-        public uint Type;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern UIntPtr VirtualQueryEx(IntPtr hProcess, IntPtr lpAddress, out MemoryBasicInformation lpBuffer, UIntPtr dwLength);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool ReadProcessMemory(IntPtr process, IntPtr address, byte[] buffer, UIntPtr size, out UIntPtr bytesRead);
 }

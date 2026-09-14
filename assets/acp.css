@@ -18,6 +18,17 @@
    click on the page. */
 [hidden] { display: none !important; }
 
+/* Preserve the existing dashboard palette/layout with clearer type and imagery. */
+html[data-uds-theme] body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; text-rendering: optimizeLegibility; }
+html[data-uds-theme] button, html[data-uds-theme] input, html[data-uds-theme] select, html[data-uds-theme] textarea { font: inherit; }
+html[data-uds-theme] img { image-rendering: auto; }
+#panel-files p { line-height: 1.65; }
+#panel-files input, #panel-files select, #panel-files textarea { min-height: 42px; }
+#panel-files th, #panel-files td { padding: 12px 14px; text-align: left; vertical-align: top; }
+#panel-files table { width: 100%; border-collapse: collapse; }
+#panel-files tr + tr { border-top: 1px solid var(--border, #333); }
+#fileMessage { min-height: 1.6em; }
+
 /* ------------------------------------------------------------- page shell - */
 html[data-uds-theme] main {
     width: auto;

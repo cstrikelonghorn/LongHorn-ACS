@@ -118,8 +118,8 @@ public static class GameTraffic
 				"identified from live OS UDP endpoint (server did not answer A2S query)", capturedAt);
 		}
 
-		// Fallback: the UDP socket is not connected, so read the connection strings the
-		// engine prints to its console from process memory.
+		// Fallback or authoritative engine scan: query the game engine's internal network state
+		// (netadr_t structs in hw.dll/sw.dll/hl.exe) and connection commands.
 		IntPtr handle = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, processId);
 		if (handle == IntPtr.Zero)
 		{
@@ -142,59 +142,33 @@ public static class GameTraffic
 					"game process exited", capturedAt);
 			}
 
-			var (acceptedEndpoint, candidateEndpoints, hasDisconnected) = ScanMemoryForEndpoints(handle, process);
-
+			var candidateList = DetectCandidates(handle, process, orderedPeers);
 			cancellationToken.ThrowIfCancellationRequested();
 
-			var queryCandidates = new List<string>();
-			if (!string.IsNullOrEmpty(acceptedEndpoint) && !hasDisconnected)
-			{
-				queryCandidates.Add(acceptedEndpoint);
-			}
-
-			// Prioritize standard CS server port :27015 and common range 27015-27030
-			var prioritized = candidateEndpoints
-				.OrderByDescending(ep => ep.EndsWith(":27015", StringComparison.OrdinalIgnoreCase))
-				.ThenByDescending(ep =>
-				{
-					if (ValveA2S.TryParseEndpoint(ep, out var parsed) && parsed is not null)
-					{
-						return parsed.Port is >= 27015 and <= 27030;
-					}
-					return false;
-				})
-				.ToList();
-
-			foreach (var ep in prioritized)
-			{
-				if (!queryCandidates.Contains(ep, StringComparer.OrdinalIgnoreCase))
-				{
-					queryCandidates.Add(ep);
-				}
-			}
-
-			// Query candidates via Valve A2S_INFO
-			foreach (var candidate in queryCandidates)
+			// Query candidates via Valve A2S_INFO in order of confidence/score
+			foreach (var candidate in candidateList)
 			{
 				if (sw.ElapsedMilliseconds >= sampleMilliseconds) break;
 				cancellationToken.ThrowIfCancellationRequested();
 
 				packetsSent++;
-				var a2s = ValveA2S.Query(candidate, timeoutMs: 600);
+				var a2s = ValveA2S.Query(candidate.Endpoint, timeoutMs: 600);
 				if (a2s.Success)
 				{
 					packetsReceived++;
-					return new Result("connected", candidate, packetsSent, packetsReceived,
-						(int)sw.ElapsedMilliseconds, ports, "verified via Valve A2S_INFO query", capturedAt, a2s);
+					return new Result("connected", candidate.Endpoint, packetsSent, packetsReceived,
+						(int)sw.ElapsedMilliseconds, ports, $"verified via Valve A2S_INFO query ({candidate.Source})", capturedAt, a2s);
 				}
 			}
 
-			// If the server did not answer A2S (e.g. firewalled UDP queries), but was accepted in game memory
-			if (!string.IsNullOrEmpty(acceptedEndpoint) && !hasDisconnected)
+			// If the server did not answer A2S (e.g. firewalled UDP queries or flood protection),
+			// but was verified from an active engine netadr_t struct or OS peer
+			var activeEngineCandidate = candidateList.FirstOrDefault(c => c.Score >= 700);
+			if (activeEngineCandidate != null)
 			{
-				return new Result("connected", acceptedEndpoint, packetsSent, packetsReceived,
+				return new Result("connected", activeEngineCandidate.Endpoint, packetsSent, packetsReceived,
 					(int)sw.ElapsedMilliseconds, ports,
-					"identified from active game connection (server did not answer A2S query)", capturedAt);
+					$"identified from active game connection ({activeEngineCandidate.Source}, server did not answer A2S query)", capturedAt);
 			}
 
 			return new Result("not-connected", "", packetsSent, packetsReceived,
@@ -215,118 +189,254 @@ public static class GameTraffic
 		}
 	}
 
-    private static readonly Regex AcceptedRegex = new(@"Connection accepted by\s+([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ConnectingRegex = new(@"Connecting to\s+([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ConnectCmdRegex = new(@"connect\s+([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex GeneralIpPortRegex = new(@"\b([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}):([0-9]{2,5})\b", RegexOptions.Compiled);
+	public sealed record EndpointCandidate(string Endpoint, int Score, string Source);
 
-    private static readonly string[] DisconnectPhrases =
-    [
-        "Server disconnected",
-        "Disconnecting from server",
-        "Server closed connection",
-        "Connection to server lost",
-        "Dropped from server"
-    ];
+	private static readonly Regex ConnectCmdRegex = new(@"connect\s+([a-zA-Z0-9_.-]+(?::[0-9]{1,5})?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+	private static readonly Regex ConnectingRegex = new(@"Connecting to\s+([a-zA-Z0-9_.-]+(?::[0-9]{1,5})?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+	private static readonly Regex GeneralIpPortRegex = new(@"\b([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}):([0-9]{2,5})\b", RegexOptions.Compiled);
 
-    private static (string? Accepted, List<string> Candidates, bool HasDisconnected) ScanMemoryForEndpoints(IntPtr handle, Process process)
-    {
-        string? lastAccepted = null;
-        var hasDisconnected = false;
-        var candidates = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+	private static List<EndpointCandidate> DetectCandidates(IntPtr handle, Process process, List<UdpPeer> osPeers)
+	{
+		var candidates = new Dictionary<string, EndpointCandidate>(StringComparer.OrdinalIgnoreCase);
 
-        long addr = 0x00010000;
-        const uint readableMask = PageReadWrite | PageWriteCopy | PageExecuteReadWrite | PageExecuteWriteCopy | PageReadOnly | PageExecuteRead;
+		// 1. OS connected UDP peers (highest authoritative rank)
+		foreach (var peer in osPeers)
+		{
+			int score = 2000;
+			if (peer.RemotePort == 27015) score += 200;
+			candidates[peer.Endpoint] = new EndpointCandidate(peer.Endpoint, score, "OS UDP socket table");
+		}
 
-        // Reusable buffer to avoid memory allocations
-        var buffer = new byte[4 * 1024 * 1024];
+		// 2. Scan engine modules for GoldSrc netadr_t structs (NA_IP = 3)
+		try
+		{
+			foreach (ProcessModule mod in process.Modules)
+			{
+				string name = (mod.ModuleName ?? "").ToLowerInvariant();
+				if (name == "hw.dll" || name == "sw.dll" || name == "hl.exe" || name == "client.dll")
+				{
+					ScanModuleForNetAdr(handle, mod, candidates);
+				}
+			}
+		}
+		catch { }
 
-        while (VirtualQueryEx(handle, (IntPtr)addr, out var mbi, (UIntPtr)Marshal.SizeOf<MemoryBasicInformation>()) != UIntPtr.Zero)
-        {
-            long baseAddr = mbi.BaseAddress.ToInt64();
-            long size = (long)mbi.RegionSize.ToUInt64();
-            if (baseAddr >= 0x7FFF0000 || size <= 0) break;
+		// 3. Scan committed game memory for heap netadr_t structs, connect commands, and IP:port patterns
+		ScanMemoryForGameTraffic(handle, candidates);
 
-            bool isCommitted = mbi.State == MemCommit;
-            bool isReadable = (mbi.Protect & readableMask) != 0 && (mbi.Protect & 0x100 /* PAGE_GUARD */) == 0;
+		return candidates.Values
+			.OrderByDescending(c => c.Score)
+			.ToList();
+	}
 
-            if (isCommitted && isReadable && size <= 16 * 1024 * 1024)
-            {
-                int toRead = (int)Math.Min(size, buffer.Length);
-                if (ReadProcessMemory(handle, (IntPtr)baseAddr, buffer, (UIntPtr)(uint)toRead, out var read) && read.ToUInt64() > 0)
-                {
-                    int bytesRead = (int)read.ToUInt64();
-                    var text = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+	private static void ScanModuleForNetAdr(IntPtr handle, ProcessModule mod, Dictionary<string, EndpointCandidate> candidates)
+	{
+		long baseAddr = mod.BaseAddress.ToInt64();
+		int size = mod.ModuleMemorySize;
+		if (size <= 0 || size > 64 * 1024 * 1024) return;
 
-                    // Search for accepted connections
-                    var acceptedMatches = AcceptedRegex.Matches(text);
-                    if (acceptedMatches.Count > 0)
-                    {
-                        var lastMatch = acceptedMatches[^1];
-                        lastAccepted = lastMatch.Groups[1].Value;
+		byte[] buf = new byte[size];
+		if (!ReadProcessMemory(handle, (IntPtr)baseAddr, buf, (UIntPtr)(uint)size, out var read) || read.ToUInt64() == 0) return;
+		int bytesRead = (int)read.ToUInt64();
 
-                        var acceptedPos = lastMatch.Index;
-                        foreach (var phrase in DisconnectPhrases)
-                        {
-                            var dcPos = text.IndexOf(phrase, acceptedPos, StringComparison.OrdinalIgnoreCase);
-                            if (dcPos > acceptedPos)
-                            {
-                                hasDisconnected = true;
-                                break;
-                            }
-                        }
-                    }
+		for (int i = 0; i <= bytesRead - 20; i++)
+		{
+			// type == 3 (NA_IP)
+			if (buf[i] == 3 && buf[i + 1] == 0 && buf[i + 2] == 0 && buf[i + 3] == 0)
+			{
+				byte b0 = buf[i + 4], b1 = buf[i + 5], b2 = buf[i + 6], b3 = buf[i + 7];
+				if (b0 == 0 || b0 == 127 || b0 == 255) continue;
 
-                    // Search for connecting
-                    foreach (Match m in ConnectingRegex.Matches(text))
-                    {
-                        var ep = m.Groups[1].Value;
-                        if (IsValidEndpoint(ep) && seen.Add(ep))
-                        {
-                            candidates.Add(ep);
-                        }
-                    }
+				// IPX bytes (must be 10 consecutive zeros in netadr_t)
+				bool allZeros = true;
+				for (int k = 0; k < 10; k++)
+				{
+					if (buf[i + 8 + k] != 0) { allZeros = false; break; }
+				}
+				if (!allZeros) continue;
 
-                    // Search for connect commands
-                    foreach (Match m in ConnectCmdRegex.Matches(text))
-                    {
-                        var ep = m.Groups[1].Value;
-                        if (IsValidEndpoint(ep) && seen.Add(ep))
-                        {
-                            candidates.Add(ep);
-                        }
-                    }
+				// Port (big-endian network byte order)
+				int port = (buf[i + 18] << 8) | buf[i + 19];
+				if (port < 1024 || port > 65535) continue;
 
-                    // General IP:port patterns in game memory
-                    foreach (Match m in GeneralIpPortRegex.Matches(text))
-                    {
-                        var ep = m.Value;
-                        if (IsValidEndpoint(ep) && seen.Add(ep))
-                        {
-                            candidates.Add(ep);
-                        }
-                    }
-                }
-            }
+				var ip = new IPAddress(new byte[] { b0, b1, b2, b3 });
+				string ep = $"{ip}:{port}";
 
-            addr = baseAddr + size;
-        }
+				int score = 800;
+				if (port == 27015) score += 300;
+				else if (port is >= 27015 and <= 27030) score += 200;
 
-        return (lastAccepted, candidates, hasDisconnected);
-    }
+				if (!IsPrivateIp(ip)) score += 150;
 
-    private static bool IsValidEndpoint(string endpoint)
-    {
-        if (!ValveA2S.TryParseEndpoint(endpoint, out var ep) || ep is null) return false;
-        if (IPAddress.IsLoopback(ep.Address) || ep.Address.Equals(IPAddress.Any) || ep.Address.Equals(IPAddress.Broadcast)) return false;
-        if (ep.Port is < 1024 or > 65535) return false;
+				if (!candidates.TryGetValue(ep, out var existing) || existing.Score < score)
+				{
+					candidates[ep] = new EndpointCandidate(ep, score, $"{mod.ModuleName} netadr_t struct");
+				}
+			}
+		}
+	}
 
-        // Filter out non-game ports like HTTPS (443), STUN (3478), etc.
-        if (ep.Port is 80 or 443 or 3478) return false;
+	private static void ScanMemoryForGameTraffic(IntPtr handle, Dictionary<string, EndpointCandidate> candidates)
+	{
+		long addr = 0x00010000;
+		const uint readableMask = PageReadWrite | PageWriteCopy | PageExecuteReadWrite | PageExecuteWriteCopy | PageReadOnly | PageExecuteRead;
+		var buffer = new byte[4 * 1024 * 1024];
 
-        return true;
-    }
+		while (VirtualQueryEx(handle, (IntPtr)addr, out var mbi, (UIntPtr)Marshal.SizeOf<MemoryBasicInformation>()) != UIntPtr.Zero)
+		{
+			long baseAddr = mbi.BaseAddress.ToInt64();
+			long size = (long)mbi.RegionSize.ToUInt64();
+			if (baseAddr >= 0x7FFF0000 || size <= 0) break;
+
+			bool isCommitted = mbi.State == MemCommit;
+			bool isReadable = (mbi.Protect & readableMask) != 0 && (mbi.Protect & 0x100 /* PAGE_GUARD */) == 0;
+
+			if (isCommitted && isReadable && size <= 16 * 1024 * 1024)
+			{
+				int toRead = (int)Math.Min(size, buffer.Length);
+				if (ReadProcessMemory(handle, (IntPtr)baseAddr, buffer, (UIntPtr)(uint)toRead, out var read) && read.ToUInt64() > 0)
+				{
+					int bytesRead = (int)read.ToUInt64();
+
+					// Check for heap netadr_t structs
+					for (int i = 0; i <= bytesRead - 20; i++)
+					{
+						if (buffer[i] == 3 && buffer[i + 1] == 0 && buffer[i + 2] == 0 && buffer[i + 3] == 0)
+						{
+							byte b0 = buffer[i + 4], b1 = buffer[i + 5], b2 = buffer[i + 6], b3 = buffer[i + 7];
+							if (b0 == 0 || b0 == 127 || b0 == 255) continue;
+
+							bool allZeros = true;
+							for (int k = 0; k < 10; k++)
+							{
+								if (buffer[i + 8 + k] != 0) { allZeros = false; break; }
+							}
+							if (!allZeros) continue;
+
+							int port = (buffer[i + 18] << 8) | buffer[i + 19];
+							if (port < 1024 || port > 65535) continue;
+
+							var ip = new IPAddress(new byte[] { b0, b1, b2, b3 });
+							string ep = $"{ip}:{port}";
+
+							int score = 700;
+							if (port == 27015) score += 250;
+							else if (port is >= 27015 and <= 27030) score += 150;
+							if (!IsPrivateIp(ip)) score += 100;
+
+							if (!candidates.TryGetValue(ep, out var existing) || existing.Score < score)
+							{
+								candidates[ep] = new EndpointCandidate(ep, score, "heap netadr_t struct");
+							}
+						}
+					}
+
+					string text = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+
+					void AddConnectMatch(Match m, string source, int baseScore)
+					{
+						string hostPort = m.Groups[1].Value.Trim();
+						if (string.IsNullOrEmpty(hostPort) || hostPort.StartsWith("%") || hostPort.StartsWith("<")) return;
+
+						string host = hostPort;
+						int port = 27015;
+						int colon = hostPort.IndexOf(':');
+						if (colon > 0)
+						{
+							host = hostPort.Substring(0, colon);
+							int.TryParse(hostPort.Substring(colon + 1), out port);
+						}
+						if (port < 1024 || port > 65535) port = 27015;
+
+						if (IPAddress.TryParse(host, out var ip))
+						{
+							if (!IPAddress.IsLoopback(ip) && !ip.Equals(IPAddress.Any) && !ip.Equals(IPAddress.Broadcast))
+							{
+								string ep = $"{ip}:{port}";
+								int score = baseScore;
+								if (port == 27015) score += 50;
+								if (!IsPrivateIp(ip)) score += 50;
+								if (!candidates.TryGetValue(ep, out var existing) || existing.Score < score)
+									candidates[ep] = new EndpointCandidate(ep, score, source);
+							}
+						}
+						else if (LooksLikeDomain(host))
+						{
+							try
+							{
+								var addrs = Dns.GetHostAddresses(host);
+								foreach (var addr in addrs.Where(a => a.AddressFamily == AddressFamily.InterNetwork))
+								{
+									string ep = $"{addr}:{port}";
+									int score = baseScore + 20;
+									if (port == 27015) score += 50;
+									if (!IsPrivateIp(addr)) score += 50;
+									if (!candidates.TryGetValue(ep, out var existing) || existing.Score < score)
+										candidates[ep] = new EndpointCandidate(ep, score, $"{source} (resolved {host})");
+								}
+							}
+							catch { }
+						}
+					}
+
+					foreach (Match m in ConnectingRegex.Matches(text))
+						AddConnectMatch(m, "console 'Connecting to' log", 550);
+
+					foreach (Match m in ConnectCmdRegex.Matches(text))
+						AddConnectMatch(m, "console 'connect' command", 500);
+
+					// General IP:port patterns in memory (e.g. server history/favorites) - lower score
+					foreach (Match m in GeneralIpPortRegex.Matches(text))
+					{
+						string ep = m.Value;
+						if (ValveA2S.TryParseEndpoint(ep, out var parsed) && parsed is not null)
+						{
+							if (parsed.Port is >= 27015 and <= 27030 && !IPAddress.IsLoopback(parsed.Address) && !parsed.Address.Equals(IPAddress.Any))
+							{
+								int score = 50;
+								if (!IsPrivateIp(parsed.Address)) score += 30;
+								if (!candidates.TryGetValue(ep, out var existing) || existing.Score < score)
+									candidates[ep] = new EndpointCandidate(ep, score, "memory ip:port string");
+							}
+						}
+					}
+				}
+			}
+
+			addr = baseAddr + size;
+		}
+	}
+
+	private static bool LooksLikeDomain(string host)
+	{
+		if (string.IsNullOrWhiteSpace(host)) return false;
+		if (!host.Contains('.')) return false;
+		if (host.StartsWith(".") || host.EndsWith(".")) return false;
+		int lastDot = host.LastIndexOf('.');
+		string tld = host.Substring(lastDot + 1);
+		return tld.Length >= 2 && tld.All(char.IsLetter);
+	}
+
+	private static bool IsPrivateIp(IPAddress ip)
+	{
+		var bytes = ip.GetAddressBytes();
+		if (bytes.Length != 4) return false;
+		if (bytes[0] == 10) return true;
+		if (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) return true;
+		if (bytes[0] == 192 && bytes[1] == 168) return true;
+		if (bytes[0] == 127) return true;
+		if (bytes[0] == 169 && bytes[1] == 254) return true;
+		return false;
+	}
+
+	private static bool IsValidEndpoint(string endpoint)
+	{
+		if (!ValveA2S.TryParseEndpoint(endpoint, out var ep) || ep is null) return false;
+		if (IPAddress.IsLoopback(ep.Address) || ep.Address.Equals(IPAddress.Any) || ep.Address.Equals(IPAddress.Broadcast)) return false;
+		if (ep.Port is < 1024 or > 65535) return false;
+		if (ep.Port is 80 or 443 or 3478) return false;
+		return true;
+	}
 
     /// <summary>
     /// Legacy compatibility helper for unit tests or external callers.

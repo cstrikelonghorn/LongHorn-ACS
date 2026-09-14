@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/signature_store.php';
+require_once __DIR__ . '/engine_store.php';
 require_once __DIR__ . '/corpus.php';
 require_once __DIR__ . '/behavior.php';
 require_once __DIR__ . '/clients.php';
@@ -98,7 +99,7 @@ $acpConfig = [
     // Known-legitimate CS 1.6 client distributions. Most of the surviving player base
     // does not run the retail Steam client, and several of these mods detour the engine
     // by design - without this file those players look like cheaters.
-    'clientProfilesFile' => acs_env('CLIENT_PROFILES') ?: (__DIR__ . '/database/client_profiles.json'),
+    'fileListsFile' => acs_env('FILE_LISTS') ?: (__DIR__ . '/database/file_lists.json'),
 
     // Derived index over reports/, so list views stop opening and JSON-decoding every
     // stored report. Safe to delete: it rebuilds itself from the files.
@@ -157,70 +158,7 @@ function acp_json_response(array $payload, int $status = 200): void
 
 function acp_load_database(array $config): array
 {
-    $data = uds_signature_store_load($config['databaseFile']);
-    $feedPath = $config['signatureFeedFile'] ?? (__DIR__ . '/database/curated_hashes.json');
-    if (is_file($feedPath)) {
-        $feed = uds_signature_store_load($feedPath);
-        $data['signatures'] = array_merge($data['signatures'], $feed['signatures']);
-        $data['feedPublishedAt'] = $feed['publishedAt'] ?? '';
-        $data['feedSha256'] = $feed['feedSha256'] ?? '';
-    }
-    // Only explicit administrator classifications become live hash rules. Popularity
-    // and client-submitted labels cannot add detection signatures.
-    $data['reviewedHashRules'] = 0;
-    try {
-        $pdo = acp_corpus_open($config);
-        $rows = $pdo->query("SELECT sha256 FROM artifacts WHERE state = 'cheat' AND state_source = 'admin' ORDER BY sha256");
-        foreach ($rows as $row) {
-            $sha = (string) $row['sha256'];
-            if (!preg_match('/^[a-f0-9]{64}$/', $sha)) continue;
-            $data['signatures'][] = [
-                'id' => 'acs-reviewed-' . $sha, 'name' => 'Administrator-reviewed cheat hash',
-                'severity' => 'DETECTED', 'confidence' => 'high', 'enabled' => true,
-                'scopes' => ['module', 'driver', 'hl-file', 'process'], 'match' => ['sha256' => [$sha]],
-            ];
-            $data['reviewedHashRules']++;
-        }
-    } catch (Throwable $e) {
-        $data['reviewedHashRulesAvailable'] = false;
-        error_log('[ACS] Reviewed signatures unavailable: ' . $e->getMessage());
-    }
-    // Imported feeds can contain the same payload under several source-specific IDs. Serving
-    // each copy makes one artifact appear as several findings. Keep the strongest definition
-    // for each identical scope+match payload while preserving the source database untouched.
-    $deduplicated = [];
-    $byPayload = [];
-    $severityRank = ['INFO' => 0, 'WARNING' => 1, 'DETECTED' => 2];
-    $confidenceRank = ['low' => 0, 'medium' => 1, 'high' => 2];
-    foreach ((array) ($data['signatures'] ?? []) as $rule) {
-        if (!is_array($rule)) continue;
-        $scopes = array_values(array_map('strval', (array) ($rule['scopes'] ?? [])));
-        sort($scopes, SORT_STRING);
-        $match = is_array($rule['match'] ?? null) ? $rule['match'] : [];
-        ksort($match, SORT_STRING);
-        foreach ($match as &$values) {
-            if (is_array($values)) { $values = array_values(array_unique(array_map('strval', $values))); sort($values, SORT_STRING); }
-        }
-        unset($values);
-        $fingerprint = hash('sha256', json_encode([$scopes, $match], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        if (!isset($byPayload[$fingerprint])) {
-            $byPayload[$fingerprint] = count($deduplicated);
-            $deduplicated[] = $rule;
-            continue;
-        }
-        $at = $byPayload[$fingerprint];
-        $old = $deduplicated[$at];
-        $newScore = 10 * ($severityRank[strtoupper((string) ($rule['severity'] ?? 'INFO'))] ?? 0)
-            + ($confidenceRank[strtolower((string) ($rule['confidence'] ?? 'low'))] ?? 0);
-        $oldScore = 10 * ($severityRank[strtoupper((string) ($old['severity'] ?? 'INFO'))] ?? 0)
-            + ($confidenceRank[strtolower((string) ($old['confidence'] ?? 'low'))] ?? 0);
-        if ($newScore > $oldScore) $deduplicated[$at] = $rule;
-    }
-    $data['deduplicatedRules'] = count((array) ($data['signatures'] ?? [])) - count($deduplicated);
-    $data['signatures'] = $deduplicated;
-    $data['counts'] = uds_signature_store_counts(uds_signature_store_rules($data));
-    $data['revision'] = hash('sha256', json_encode($data['signatures'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-    return $data;
+    return acs_engine_database($config);
 }
 
 function acp_request_token(): string
@@ -633,7 +571,7 @@ function acp_apply_current_finding_policy(array &$report, array $config): void
     } catch (Throwable $e) {
         error_log('[ACS] Client compatibility policy: ' . $e->getMessage());
     }
-    $report['findingPolicyVersion'] = 2;
+    acs_apply_engine_policy($report, acp_load_database($config));
 }
 
 function acp_report_findings(array $report): array
@@ -713,7 +651,7 @@ function acp_report_summary(array $report): array
         }
     }
     // ECD Parity: DETECTED (Red) requires active in-game cheat. If detections only exist in historical/offline traces, status is WARNING (Yellow / Suspect).
-    $evidenceStatus = $inGameActive > 0 ? 'DETECTED' : (($severity['DETECTED'] > 0 || $severity['WARNING'] > 0) ? 'WARNING' : 'CLEAN');
+    $evidenceStatus = $severity['DETECTED'] > 0 ? 'DETECTED' : ($severity['WARNING'] > 0 ? 'WARNING' : 'CLEAN');
 
 
     return [

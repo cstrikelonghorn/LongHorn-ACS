@@ -7,11 +7,13 @@ if (PHP_SAPI !== 'cli') {
     exit('This script runs from the command line only.');
 }
 
+$scratch = getenv('SCRATCH') ?: sys_get_temp_dir();
+$acpDir = getenv('ACPDIR') ?: dirname(__DIR__);
 putenv('ACP_TELEMETRY_SECRET=test-secret-abc');
-putenv('ACP_BEHAVIOR_FILE=' . getenv('SCRATCH') . '/behavior_test.sqlite');
-@unlink(getenv('SCRATCH') . '/behavior_test.sqlite');
+putenv('ACP_BEHAVIOR_FILE=' . $scratch . '/behavior_test.sqlite');
+@unlink($scratch . '/behavior_test.sqlite');
 
-require getenv('ACPDIR') . '/config.php';
+require $acpDir . '/config.php';
 
 $pass = 0; $fail = 0;
 function ok(string $what, bool $cond, string $extra = ''): void {

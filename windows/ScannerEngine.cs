@@ -23,184 +23,8 @@ using Microsoft.Win32;
 
 namespace ACPScanner;
 
-public static class ScannerEngine
+public static partial class ScannerEngine
 {
-	private sealed class RuleSet
-	{
-		private readonly Dictionary<string, List<CompiledRule>> _bySource = new Dictionary<string, List<CompiledRule>>(StringComparer.OrdinalIgnoreCase);
-
-		private readonly List<CompiledRule> _all = new List<CompiledRule>();
-
-		public IReadOnlyList<CompiledRule> All => _all;
-
-		public static RuleSet Build(JsonElement root)
-		{
-			RuleSet ruleSet = new RuleSet();
-			if (!root.TryGetProperty("signatures", out var value) || value.ValueKind != JsonValueKind.Array)
-			{
-				return ruleSet;
-			}
-			foreach (JsonElement item in value.EnumerateArray())
-			{
-				if (item.ValueKind != JsonValueKind.Object)
-				{
-					continue;
-				}
-				CompiledRule compiledRule = CompiledRule.From(item);
-				ruleSet._all.Add(compiledRule);
-				string[] matchSources = MatchSources;
-				foreach (string text in matchSources)
-				{
-					if (compiledRule.AppliesToSource(text))
-					{
-						if (!ruleSet._bySource.TryGetValue(text, out List<CompiledRule> value2))
-						{
-							value2 = new List<CompiledRule>();
-							ruleSet._bySource[text] = value2;
-						}
-						value2.Add(compiledRule);
-					}
-				}
-			}
-			return ruleSet;
-		}
-
-		public List<CompiledRule> RulesFor(string source)
-		{
-			List<CompiledRule> value;
-			return _bySource.TryGetValue(source, out value) ? value : new List<CompiledRule>();
-		}
-	}
-
-	private sealed class CompiledRule
-	{
-		public string Id { get; private set; } = "unknown-rule";
-
-		public string Name { get; private set; } = "unknown-rule";
-
-		public string Severity { get; private set; } = "INFO";
-
-		public string Confidence { get; private set; } = "medium";
-
-		public bool Enabled { get; private set; } = true;
-
-		public bool Valid => CompileErrors.Count == 0;
-
-		public List<string> CompileErrors { get; } = new List<string>();
-
-		public List<string> Scopes { get; } = new List<string>();
-
-		public List<MatchCondition> Conditions { get; } = new List<MatchCondition>();
-
-		public static CompiledRule From(JsonElement rule)
-		{
-			CompiledRule compiledRule = new CompiledRule();
-			compiledRule.Id = ReadString(rule, "id", "unknown-rule");
-			compiledRule.Name = ReadString(rule, "name", compiledRule.Id);
-			compiledRule.Severity = ReadString(rule, "severity", "INFO").ToUpperInvariant();
-			compiledRule.Confidence = ReadString(rule, "confidence", (compiledRule.Severity == "DETECTED") ? "high" : "medium").ToLowerInvariant();
-			compiledRule.Enabled = !rule.TryGetProperty("enabled", out var value) || value.ValueKind != JsonValueKind.False;
-			if (rule.TryGetProperty("scopes", out var value2) && value2.ValueKind == JsonValueKind.Array)
-			{
-				foreach (JsonElement item in value2.EnumerateArray())
-				{
-					string text = item.GetString();
-					if (!string.IsNullOrWhiteSpace(text))
-					{
-						compiledRule.Scopes.Add(text);
-					}
-				}
-			}
-			if (rule.TryGetProperty("match", out var value3) && value3.ValueKind == JsonValueKind.Object)
-			{
-				foreach (JsonProperty item2 in value3.EnumerateObject())
-				{
-					string name = item2.Name;
-					bool flag = name.EndsWith("_regex", StringComparison.OrdinalIgnoreCase);
-					bool flag2 = flag;
-					if (!flag2)
-					{
-						bool flag3;
-						switch (name)
-						{
-						case "report_regex":
-						case "output_regex":
-						case "path_regex":
-							flag3 = true;
-							break;
-						default:
-							flag3 = false;
-							break;
-						}
-						flag2 = flag3;
-					}
-					bool flag4 = flag2;
-					MatchCondition matchCondition = new MatchCondition
-					{
-						Key = name,
-						IsRegex = flag4
-					};
-					if (flag4)
-					{
-						string[] array = CollectStrings(item2.Value);
-						foreach (string value4 in array)
-						{
-							var (pattern, regexOptions) = ConvertPhpRegex(value4);
-							try
-							{
-								matchCondition.Regexes.Add(new Regex(pattern, regexOptions | RegexOptions.CultureInvariant | RegexOptions.Compiled, TimeSpan.FromMilliseconds(150L)));
-							}
-							catch (Exception ex)
-							{
-								compiledRule.CompileErrors.Add($"{name}: {ex.Message}");
-							}
-						}
-					}
-					else
-					{
-						string[] array2 = CollectStrings(item2.Value);
-						foreach (string text2 in array2)
-						{
-							matchCondition.Values.Add(text2.ToLowerInvariant());
-						}
-					}
-					compiledRule.Conditions.Add(matchCondition);
-				}
-			}
-			if (!compiledRule.Valid)
-			{
-				compiledRule.Enabled = false;
-			}
-			return compiledRule;
-		}
-
-		public bool AppliesToSource(string source)
-		{
-			if (Scopes.Count == 0)
-			{
-				return true;
-			}
-			foreach (string scope in Scopes)
-			{
-				if (scope.Equals(source, StringComparison.OrdinalIgnoreCase) || scope.Equals("client-live", StringComparison.OrdinalIgnoreCase))
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-	}
-
-	private sealed class MatchCondition
-	{
-		public string Key { get; init; } = "";
-
-		public bool IsRegex { get; init; }
-
-		public List<string> Values { get; } = new List<string>();
-
-		public List<Regex> Regexes { get; } = new List<Regex>();
-	}
 
 	/// <summary>
 	/// The game server as the engine reported it at the moment the scan started. Status is
@@ -458,6 +282,7 @@ public static class ScannerEngine
 	private static readonly string[] ConfigFileNames = new string[6] { "config.cfg", "autoexec.cfg", "userconfig.cfg", "listenserver.cfg", "valve.rc", "game.cfg" };
 
 	private static RuleSet? _activeRules;
+	private static JsonElement _engineDatabase;
 
 	private static readonly string[] MatchSources = new string[10]
 	{
@@ -497,17 +322,18 @@ public static class ScannerEngine
 	// and self-modify at runtime (V8 JIT, FFmpeg CPU dispatch), so they are not integrity-verified.
 	private static readonly string[] GameModDirectories = new string[6] { "cstrike", "valve", "czero", "dod", "tfc", "gearbox" };
 
-	private static readonly string[] SuspiciousTools = new string[18]
-	{
-		"cheatengine", "speedhack", "vehdebug", "x64dbg", "x32dbg", "ollydbg", "scylla", "extremeinjector", "xenos", "ghinjector",
-		"artmoney", "squalr", "reclass", "megadumper", "tsearch", "wpe", "winject", "processhacker"
-	};
-
-	private static readonly (string Mutex, string Cheat)[] CheatMutexes = new(string, string)[1] { ("oxware_launcher_mutex", "oxware") };
-
-	private static readonly (string Folder, string Cheat)[] CheatConfigFolders = new(string, string)[1] { ("oxware", "oxware") };
-
-	private static readonly (string RegistryKey, string Cheat)[] CheatRegistryKeys = new(string, string)[1] { ("Software\\oxware", "oxware") };
+    private static string[] IndicatorStrings(string key)
+    {
+        if (_engineDatabase.ValueKind != JsonValueKind.Object || !_engineDatabase.TryGetProperty("indicators", out var indicators)
+            || !indicators.TryGetProperty(key, out var values)) return Array.Empty<string>();
+        return values.EnumerateArray().Select(v => v.GetString() ?? "").Where(v => v.Length > 0).ToArray();
+    }
+    private static (string, string)[] IndicatorPairs(string key)
+    {
+        if (_engineDatabase.ValueKind != JsonValueKind.Object || !_engineDatabase.TryGetProperty("indicators", out var indicators)
+            || !indicators.TryGetProperty(key, out var values)) return Array.Empty<(string, string)>();
+        return values.EnumerateArray().Select(v => (v[0].GetString() ?? "", v[1].GetString() ?? "")).ToArray();
+    }
 
 	private static readonly object HashCacheLock = new object();
 
@@ -544,6 +370,7 @@ public static class ScannerEngine
 		finally
 		{
 			_activeRules = null;
+			_engineDatabase = default;
 			_scanToken = default(CancellationToken);
 			_gameInstallRoot = "";
 			HashCache.Clear();
@@ -595,6 +422,7 @@ public static class ScannerEngine
 				}
 				Dictionary<string, object?> databaseCounts = ReadCounts(database.RootElement);
 				_activeRules = RuleSet.Build(database.RootElement);
+				_engineDatabase = database.RootElement;
 				List<Dictionary<string, object?>> findings = new List<Dictionary<string, object>>();
 				HashSet<string> findingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 				List<string> notes = new List<string>();
@@ -691,6 +519,22 @@ public static class ScannerEngine
 			// detecting disconnection/reconnection cheats and server switching.
 			var serverEvidence = serverMonitor.StopAndFinalize();
 			ConnectedServer serverInfo = serverInfoBase with { Evidence = serverEvidence };
+
+			// If serverInfoBase missed the connection at start but continuous monitor confirmed it
+			if (serverInfo.Status != "connected" && serverEvidence.FinalStatus == "connected" && !string.IsNullOrEmpty(serverEvidence.FinalEndpoint))
+			{
+				var a2s = ValveA2S.Query(serverEvidence.FinalEndpoint);
+				serverInfo = new ConnectedServer(
+					Status: "connected",
+					Address: serverEvidence.FinalEndpoint,
+					Name: !string.IsNullOrEmpty(serverEvidence.FinalServerName) ? serverEvidence.FinalServerName : (a2s.Success ? a2s.Name : ""),
+					Map: !string.IsNullOrEmpty(serverEvidence.FinalServerMap) ? serverEvidence.FinalServerMap : (a2s.Success ? a2s.Map : ""),
+					NameSource: a2s.Success ? "server reply (A2S_INFO)" : "continuous connection monitor",
+					Traffic: serverInfoBase.Traffic with { Status = "connected", Endpoint = serverEvidence.FinalEndpoint },
+					LiveVersion: serverInfoBase.LiveVersion,
+					A2S: a2s.Success ? a2s : serverInfoBase.A2S,
+					Evidence: serverEvidence);
+			}
 
 			// Add evidence-based findings for anti-cheat
 			if (serverEvidence.FinalStatus == "disconnected-during-scan")
@@ -930,8 +774,18 @@ public static class ScannerEngine
 					["hlFiles"] = hlFiles,
 					["notes"] = notes
 				};
-				cancellationToken.ThrowIfCancellationRequested();
-				string reportJson = JsonSerializer.Serialize(report, JsonOptions());
+				EngineDecisionPolicy.Apply(database.RootElement, report);
+                detected = findings.Count(f => SeverityOf(f) == "DETECTED");
+                warnings = findings.Count(f => SeverityOf(f) == "WARNING");
+                status = detected > 0 ? "DETECTED" : warnings > 0 ? "WARNING" : "CLEAN";
+                report["status"] = status;
+                var finalSummary = (Dictionary<string, object>)report["summary"];
+                finalSummary["detected"] = detected;
+                finalSummary["warnings"] = warnings;
+                finalSummary["findings"] = findings.Count;
+                report["detectedCheats"] = BuildDetectedCheats(findings);
+                cancellationToken.ThrowIfCancellationRequested();
+                string reportJson = JsonSerializer.Serialize(report, JsonOptions());
 				if (!uploadConsented)
 					return new ScanUploadResult(false, status, detected, warnings, processes.Count, drivers.Count, hlFiles.Count, null, null, UploadDeclined: true, ServerStatus: serverInfo.Status, ServerName: serverInfo.Name, ServerAddress: serverInfo.Address, ServerMap: serverInfo.Map);
 				cancellationToken.ThrowIfCancellationRequested();
@@ -2100,7 +1954,8 @@ public static class ScannerEngine
 
 	private static void AddEngineFinding(List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, string ruleId, string ruleName, string severity, string category, string source, string subject, string reason, string time)
 	{
-		if (findings.Count < 500)
+		severity = EngineDecisionPolicy.Cap(_engineDatabase, ruleId, severity);
+		if (findings.Count < 4000)
 		{
 			string item = $"{ruleId}|{source}|{subject}";
 			if (findingKeys.Add(item))
@@ -2144,7 +1999,7 @@ public static class ScannerEngine
 
 	private static void ScanCheatArtifacts(List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, List<string> notes)
 	{
-		(string, string)[] cheatMutexes = CheatMutexes;
+		(string, string)[] cheatMutexes = IndicatorPairs("mutexes");
 		for (int i = 0; i < cheatMutexes.Length; i++)
 		{
 			var (text, text2) = cheatMutexes[i];
@@ -2163,7 +2018,7 @@ public static class ScannerEngine
 			}
 		}
 		string folderPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-		(string, string)[] cheatConfigFolders = CheatConfigFolders;
+		(string, string)[] cheatConfigFolders = IndicatorPairs("configFolders");
 		for (int j = 0; j < cheatConfigFolders.Length; j++)
 		{
 			(string, string) tuple2 = cheatConfigFolders[j];
@@ -2175,7 +2030,7 @@ public static class ScannerEngine
 				AddEngineFinding(findings, findingKeys, "acp-cheat-config-folder", "Cheat config folder present (" + item2 + ")", "WARNING", "installedInOs", "hl-file", text3, "A " + item2 + " configuration folder exists in %APPDATA% — the cheat has been installed or run on this machine.", "");
 			}
 		}
-		(string, string)[] cheatRegistryKeys = CheatRegistryKeys;
+		(string, string)[] cheatRegistryKeys = IndicatorPairs("registryKeys");
 		for (int k = 0; k < cheatRegistryKeys.Length; k++)
 		{
 			var (text4, text5) = cheatRegistryKeys[k];
@@ -2202,7 +2057,7 @@ public static class ScannerEngine
 			foreach (Process process in processes)
 			{
 				string name = process.ProcessName.Replace(" ", "").ToLowerInvariant();
-				string text = SuspiciousTools.FirstOrDefault((string tool) => name.Contains(tool, StringComparison.Ordinal));
+				string text = IndicatorStrings("tools").FirstOrDefault((string tool) => name.Contains(tool, StringComparison.Ordinal));
 				if (text != null)
 				{
 					AddEngineFinding(findings, findingKeys, "acp-suspicious-tool", "Cheat/debug tool running during scan", "WARNING", "review", "process", $"{process.ProcessName} (PID {Safe(() => process.Id)})", "A known cheat/injection/memory-editing tool is running ('" + text + "'). Review whether it was used against Counter-Strike.", "");
@@ -2451,270 +2306,6 @@ public static class ScannerEngine
 		}
 	}
 
-	private static void MatchRules(JsonElement database, string source, string surface, string subject, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, string time = "", string hashSurface = "")
-	{
-		_scanToken.ThrowIfCancellationRequested();
-		if (findings.Count >= 500)
-		{
-			return;
-		}
-		RuleSet ruleSet = _activeRules ?? RuleSet.Build(database);
-		List<CompiledRule> list = ruleSet.RulesFor(source);
-		if (list.Count == 0)
-		{
-			return;
-		}
-		string lowSurface = surface.ToLowerInvariant();
-		foreach (CompiledRule item2 in list)
-		{
-			if (findings.Count >= 500)
-			{
-				break;
-			}
-			if (!item2.Enabled)
-			{
-				continue;
-			}
-			string item = $"{item2.Id}|{source}|{subject}";
-			if (!findingKeys.Contains(item) && RuleConditionsMatch(item2, source, surface, lowSurface, hashSurface, out int matchedHashLength))
-			{
-				string text = ((item2.Severity == "DETECTED" && !IsStrongEvidence(item2.Severity, item2.Confidence, matchedHashLength)) ? "WARNING" : item2.Severity);
-				findingKeys.Add(item);
-				string text2;
-				if (text == "DETECTED")
-				{
-					bool flag = (source == "live-behavior");
-					text2 = (flag ? "High-confidence integrated behavior evidence." : "High-confidence live client evidence.");
-				}
-				else
-				{
-					bool flag = (source == "live-behavior");
-					text2 = (flag ? "Integrated live behavior review evidence." : "Review evidence only. ACS does not call this a cheat without live module/driver evidence.");
-				}
-				string value = text2;
-				findings.Add(new Dictionary<string, object>
-				{
-					["ruleId"] = item2.Id,
-					["ruleName"] = item2.Name,
-					["severity"] = text,
-					["confidence"] = item2.Confidence,
-					["category"] = CategoryForSource(source, subject),
-					["source"] = source,
-					["subject"] = subject,
-					["reason"] = value,
-					["time"] = time
-				});
-			}
-		}
-	}
-
-	// Small deterministic seam for regression tests; it exercises the same compiled rule and
-	// severity path as a live scan without opening another process.
-	internal static (bool Matched, int HashLength, string Severity, bool Valid) EvaluateRuleForTest(
-		string ruleJson, string source, string surface, string hashSurface)
-	{
-		using JsonDocument document = JsonDocument.Parse("{\"signatures\":[" + ruleJson + "]}");
-		RuleSet set = RuleSet.Build(document.RootElement);
-		CompiledRule rule = set.All.Single();
-		int hashLength = 0;
-		bool matched = rule.Valid && RuleConditionsMatch(rule, source, surface, surface.ToLowerInvariant(), hashSurface, out hashLength);
-		string severity = matched && rule.Severity == "DETECTED" && !IsStrongEvidence(rule.Severity, rule.Confidence, hashLength)
-			? "WARNING" : rule.Severity;
-		return (matched, hashLength, severity, rule.Valid);
-	}
-
-	private static bool IsHashCondition(string key)
-	{
-		switch (key)
-		{
-		case "sha256":
-		case "hash_sha256":
-		case "sha1":
-		case "hash_sha1":
-		case "md5":
-		case "hash_md5":
-		case "file_md5hash":
-		case "file_hash":
-			return true;
-		default:
-			return false;
-		}
-	}
-
-	/// <summary>
-	/// Evaluates signature match using "Hash OR Name, not AND" semantics.
-	/// A renamed cheat matching a known cryptographic hash hits as authoritative DETECTED.
-	/// A file matching a filename or path regex without a verified hash hits only as review WARNING.
-	/// </summary>
-	private static bool RuleConditionsMatch(CompiledRule rule, string source, string surface, string lowSurface, string hashSurface, out int matchedHashLength)
-	{
-		matchedHashLength = 0;
-		List<MatchCondition> hashConditions = new List<MatchCondition>();
-		List<MatchCondition> patternConditions = new List<MatchCondition>();
-
-		foreach (MatchCondition condition in rule.Conditions)
-		{
-			if (!MatchKeyAppliesToSource(condition.Key, source))
-			{
-				continue;
-			}
-			if (IsHashCondition(condition.Key))
-			{
-				hashConditions.Add(condition);
-			}
-			else
-			{
-				patternConditions.Add(condition);
-			}
-		}
-
-		if (hashConditions.Count == 0 && patternConditions.Count == 0)
-		{
-			return false;
-		}
-
-		// 1. Hash matching: cryptographic hash of the artifact is ban-grade proof
-		if (hashConditions.Count > 0 && !string.IsNullOrWhiteSpace(hashSurface))
-		{
-			string[] actual = hashSurface.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-			foreach (MatchCondition condition in hashConditions)
-			{
-				if (HashValueMatches(condition.Values, actual, out int conditionHashLength))
-				{
-					matchedHashLength = Math.Max(matchedHashLength, conditionHashLength);
-				}
-			}
-			if (matchedHashLength > 0)
-			{
-				return true;
-			}
-		}
-
-		// 2. Pattern matching: filenames, paths, strings are review-grade evidence
-		bool matchedPattern = false;
-		if (patternConditions.Count > 0)
-		{
-			foreach (MatchCondition condition in patternConditions)
-			{
-				if (condition.IsRegex)
-				{
-					foreach (Regex regex in condition.Regexes)
-					{
-						try
-						{
-							if (regex.IsMatch(surface))
-							{
-								matchedPattern = true;
-								break;
-							}
-						}
-						catch (RegexMatchTimeoutException)
-						{
-						}
-					}
-				}
-				else
-				{
-					foreach (string value in condition.Values)
-					{
-						if (value.Length > 0 && lowSurface.IndexOf(value, StringComparison.Ordinal) >= 0)
-						{
-							matchedPattern = true;
-							break;
-						}
-					}
-				}
-				if (matchedPattern)
-				{
-					break;
-				}
-			}
-		}
-
-		if (matchedPattern)
-		{
-			// Name-only match without verified hash: matchedHashLength = 0 ensures
-			// IsStrongEvidence evaluates to false, downgrading any DETECTED rule to WARNING.
-			matchedHashLength = 0;
-			return true;
-		}
-
-		return false;
-	}
-
-	/// <summary>
-	/// Match a rule's hash values against the hashes of the current artifact.
-	/// A full digest matches exactly; a truncated digest matches as a prefix. Server-side
-	/// cheat databases (ReChecker and its forks) publish 4-byte MD5s, so prefix matching turns
-	/// a filename-only signature into real file evidence and removes its false positives.
-	/// Values shorter than the 8 hex characters (4 bytes) those databases use are ignored so a
-	/// stray short string cannot match by accident.
-	/// </summary>
-	private static bool HashValueMatches(List<string> values, string[] actual, out int matchedLength)
-	{
-		matchedLength = 0;
-		foreach (string value in values)
-		{
-			if (value.Length < 8 || value.Length > 64 || !IsHex(value))
-			{
-				continue;
-			}
-			foreach (string candidate in actual)
-			{
-				if (candidate.Length >= value.Length
-					&& candidate.AsSpan(0, value.Length).Equals(value.AsSpan(), StringComparison.OrdinalIgnoreCase))
-				{
-					matchedLength = Math.Max(matchedLength, value.Length);
-				}
-			}
-		}
-		return matchedLength > 0;
-	}
-
-	private static bool IsHex(string value)
-	{
-		foreach (char character in value)
-		{
-			if (!Uri.IsHexDigit(character))
-			{
-				return false;
-			}
-		}
-		return value.Length > 0;
-	}
-
-	private static string[] CollectStrings(JsonElement element)
-	{
-		if (element.ValueKind == JsonValueKind.String)
-		{
-			return new string[1] { element.GetString() ?? "" };
-		}
-		if (element.ValueKind == JsonValueKind.Array)
-		{
-			List<string> list = new List<string>();
-			foreach (JsonElement item in element.EnumerateArray())
-			{
-				if (item.ValueKind == JsonValueKind.String)
-				{
-					list.Add(item.GetString() ?? "");
-				}
-			}
-			return list.ToArray();
-		}
-		return Array.Empty<string>();
-	}
-
-	private static bool IsStrongEvidence(string configuredSeverity, string confidence, int matchedHashLength)
-	{
-		if (configuredSeverity != "DETECTED" || confidence != "high")
-		{
-			return false;
-		}
-		// Names and paths are triage evidence, not proof. Require at least a complete MD5
-		// before a database rule can produce a red verdict. Four-byte ReChecker prefixes
-		// remain useful review evidence but carry too much collision risk for DETECTED.
-		return matchedHashLength >= 32;
-	}
 
 	private static string CategoryForSource(string source, string subject = "")
 	{
@@ -2846,120 +2437,6 @@ public static class ScannerEngine
 	}
 
 
-	private static bool MatchKeyAppliesToSource(string key, string source)
-	{
-		if (key.StartsWith("output_", StringComparison.OrdinalIgnoreCase))
-		{
-			return source == "live-behavior";
-		}
-		if (key.StartsWith("config_", StringComparison.OrdinalIgnoreCase))
-		{
-			return source == "hl-config";
-		}
-		bool result;
-		if (key.StartsWith("file_contains", StringComparison.OrdinalIgnoreCase))
-		{
-			switch (source)
-			{
-			case "hl-file":
-			case "hl-config":
-			case "live-behavior":
-				result = true;
-				break;
-			default:
-				result = false;
-				break;
-			}
-			return result;
-		}
-		if (key.StartsWith("report_", StringComparison.OrdinalIgnoreCase))
-		{
-			switch (source)
-			{
-			case "process":
-			case "module":
-			case "driver":
-			case "download-trace":
-			case "execution-trace":
-			case "game-process":
-			case "memory":
-			case "live-behavior":
-				result = true;
-				break;
-			default:
-				result = false;
-				break;
-			}
-			return result;
-		}
-		if (key.StartsWith("path_", StringComparison.OrdinalIgnoreCase) || key.StartsWith("filename_", StringComparison.OrdinalIgnoreCase))
-		{
-			switch (source)
-			{
-			case "process":
-			case "module":
-			case "driver":
-			case "download-trace":
-			case "execution-trace":
-			case "game-process":
-			case "hl-file":
-			case "live-behavior":
-				result = true;
-				break;
-			default:
-				result = false;
-				break;
-			}
-			return result;
-		}
-		switch (key)
-		{
-		case "sha256":
-		case "hash_sha256":
-		case "sha1":
-		case "hash_sha1":
-		case "md5":
-		case "hash_md5":
-		case "file_md5hash":
-		case "file_hash":
-			result = true;
-			break;
-		default:
-			result = false;
-			break;
-		}
-		if (result)
-		{
-			return true;
-		}
-		return false;
-	}
-
-	private static (string Pattern, RegexOptions Options) ConvertPhpRegex(string value)
-	{
-		bool flag = value.Length > 2;
-		bool flag2 = flag;
-		if (flag2)
-		{
-			char c = value[0];
-			bool flag3 = ((c == '#' || c == '/' || c == '~') ? true : false);
-			flag2 = flag3;
-		}
-		if (flag2)
-		{
-			char c2 = value[0];
-			int num = value.LastIndexOf(c2);
-			if (num > 0)
-			{
-				string item = value.Substring(1, num - 1).Replace("\\" + c2, c2.ToString());
-				int num2 = num + 1;
-				string text = value.Substring(num2, value.Length - num2);
-				RegexOptions item2 = (text.Contains('i') ? RegexOptions.IgnoreCase : RegexOptions.None);
-				return (Pattern: item, Options: item2);
-			}
-		}
-		return (Pattern: value, Options: RegexOptions.IgnoreCase);
-	}
 
 	private static string? TrySha256(string path)
 	{

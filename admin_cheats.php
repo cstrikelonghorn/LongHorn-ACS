@@ -54,6 +54,7 @@ $navDownloadHref = 'download.php';
 <!-- Tab Navigation -->
 <div class="wrap">
     <div class="acm-tabs" id="acmTabs">
+        <button class="acm-tab" data-tab="files">Blacklist &amp; Whitelist</button>
         <button class="acm-tab is-active" data-tab="signatures">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
             Signatures
@@ -98,6 +99,28 @@ $navDownloadHref = 'download.php';
         </select>
     </div>
     <div id="sigTable"><div class="acm-msg">Connect with your admin token to load signatures.</div></div>
+</div>
+
+<div class="wrap acm-panel" id="panel-files" hidden>
+    <div class="acm-card">
+        <h3 class="acm-card-title">File rules</h3>
+        <p>Blacklist a file as Cheat or Warning, or record a reviewed clean file. SHA-256 identifies the exact file even after renaming.</p>
+        <form id="fileRuleForm">
+            <div class="acm-form-grid">
+                <div class="acm-field"><label for="fileList">List</label><select id="fileList"><option value="blacklist">Blacklist</option><option value="whitelist">Whitelist</option></select></div>
+                <div class="acm-field"><label for="fileMatch">Match</label><select id="fileMatch"><option value="sha256">Exact SHA-256</option><option value="filename">Exact filename</option></select></div>
+                <div class="acm-field acm-field-wide"><label for="fileValue">File hash or filename</label><input id="fileValue" required maxlength="180" placeholder="SHA-256 or cscheats.dll" autocomplete="off" spellcheck="false"></div>
+                <div class="acm-field"><label for="fileSeverity">Alert</label><select id="fileSeverity"><option value="WARNING">Warning</option><option value="DETECTED">Cheat — administrator policy</option></select></div>
+                <div class="acm-field"><label for="fileScope">Where to match</label><select id="fileScope"><option value="all">All scanned file inventories</option><option value="module">Loaded game modules only</option><option value="hl-file">Game folder only</option><option value="process">Running processes only</option><option value="driver">Installed drivers only</option></select></div>
+                <div class="acm-field acm-field-wide"><label for="fileReason">Review reason</label><textarea id="fileReason" rows="2" maxlength="1000" required placeholder="Why this file is blocked or allowed; include source or review reference."></textarea></div>
+            </div>
+            <p class="sub">A filename whitelist clears name-based findings. A hash whitelist clears file-signature findings for those exact bytes. Runtime modifications and server evidence remain visible. Exact clean hashes take priority over blacklists; blacklisted hashes take priority over filenames.</p>
+            <button type="submit" class="acm-btn acm-btn-primary" id="fileSave">Save file rule</button>
+            <button type="button" class="acm-btn" id="fileReload">Reload</button>
+            <p id="fileMessage" role="status" aria-live="polite"></p>
+        </form>
+    </div>
+    <div id="fileRulesTable"></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════════
@@ -428,6 +451,51 @@ $('acmTabs').addEventListener('click', e => {
     document.querySelectorAll('.acm-panel').forEach(p => p.hidden = true);
     const panel = $('panel-' + btn.dataset.tab);
     if (panel) panel.hidden = false;
+    if (btn.dataset.tab === 'files') loadFileLists();
+});
+
+let fileLists = null;
+async function loadFileLists() {
+    const result = await api('file_lists');
+    if (!result.ok) { $('fileMessage').textContent = result.error || 'Could not load file lists.'; return; }
+    fileLists = result.lists;
+    renderFileLists();
+}
+function renderFileLists() {
+    $('fileRulesTable').innerHTML = ['blacklist','whitelist'].map(list => {
+        const rows = fileLists[list];
+        return `<div class="acm-card"><h3>${list === 'blacklist' ? 'Blacklist' : 'Whitelist'} · ${rows.length}</h3>` +
+            (rows.length ? `<div style="overflow-x:auto"><table><thead><tr><th>File / SHA-256</th><th>Match</th><th>Alert</th><th>Reason</th><th></th></tr></thead><tbody>` +
+                rows.map(entry => `<tr><td style="overflow-wrap:anywhere;max-width:420px">${esc(entry.value)}</td><td>${esc(entry.matchType)}</td><td>${list === 'whitelist' ? 'Allowed' : entry.severity === 'DETECTED' ? 'Cheat (admin)' : 'Warning'}</td><td>${esc(entry.reason)}</td><td><button class="acm-btn" data-list="${list}" data-remove="${esc(entry.id)}">Remove</button></td></tr>`).join('') + '</tbody></table></div>'
+                : '<p>No entries. Only rules you add here will apply.</p>') + '</div>';
+    }).join('');
+}
+$('fileList').addEventListener('change', () => { $('fileSeverity').disabled = $('fileList').value === 'whitelist'; });
+$('fileReload').addEventListener('click', loadFileLists);
+$('fileRuleForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!fileLists) { await loadFileLists(); if (!fileLists) return; }
+    $('fileSave').disabled = true;
+    try {
+        const scope = $('fileScope').value;
+        const result = await api('file_lists', { method: 'POST', body: {
+            revision: fileLists.revision, list: $('fileList').value,
+            entry: { matchType: $('fileMatch').value, value: $('fileValue').value, severity: $('fileSeverity').value,
+                reason: $('fileReason').value, scopes: scope === 'all' ? ['module','hl-file','process','driver','game-process'] : [scope] }
+        }});
+        $('fileMessage').textContent = result.ok ? 'Saved. Applies to the next scan and report review.' : result.error || 'Save failed.';
+        if (result.ok) { fileLists = result.lists; renderFileLists(); }
+    } finally { $('fileSave').disabled = false; }
+});
+$('fileRulesTable').addEventListener('click', async event => {
+    const button = event.target.closest('[data-remove]');
+    if (!button || !fileLists) return;
+    button.disabled = true;
+    const result = await api('file_lists', { method: 'POST', body: {
+        revision: fileLists.revision, list: button.dataset.list, id: button.dataset.remove, operation: 'delete'
+    }});
+    if (result.ok) { fileLists = result.lists; renderFileLists(); }
+    else { $('fileMessage').textContent = result.error || 'Remove failed.'; button.disabled = false; }
 });
 
 /* ──────── Signature Table ──────── */

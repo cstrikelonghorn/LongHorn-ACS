@@ -40,26 +40,15 @@ declare(strict_types=1);
  */
 function acs_client_profiles(array $config): array
 {
-    // Keyed by path, not a bare singleton: a caller may legitimately point at a
-    // different profile file (tests do), and a singleton would silently serve the first
-    // one loaded for the rest of the request.
-    static $cache = [];
-
-    $path = $config['clientProfilesFile'] ?? (__DIR__ . '/database/client_profiles.json');
-    if (array_key_exists($path, $cache)) {
-        return $cache[$path];
+    // An explicit legacy path is accepted by offline migration/tests only.
+    if (!empty($config['clientProfilesFile'])) {
+        $path = $config['clientProfilesFile'];
+        $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : [];
+        return is_array($data) ? $data : ['profiles' => []];
     }
-
-    if (!is_file($path)) {
-        return $cache[$path] = ['version' => 0, 'profiles' => []];
-    }
-
-    $data = json_decode((string) @file_get_contents($path), true);
-    if (!is_array($data) || !is_array($data['profiles'] ?? null)) {
-        return $cache[$path] = ['version' => 0, 'profiles' => []];
-    }
-
-    return $cache[$path] = $data;
+    $path = $config['databaseFile'] ?? (__DIR__ . '/database/cheats_database.json');
+    $data = uds_signature_store_load($path);
+    return $data['clientProfiles'] ?? ['version' => 0, 'profiles' => []];
 }
 
 /** Lowercased module names and file names present in a report. */
@@ -202,7 +191,7 @@ function acs_client_identify(array $report, array $config): ?array
  * The live desktop engine emits `acp-*` ids (acp-inline-hook, acp-foreign-module),
  * while the profile database and the original test suite were written against the
  * older `acs-*` namespace. Without collapsing the two prefixes a profile is loaded,
- * reports "recognised", and explains nothing — the exact silent no-op that keeps
+ * reports "recognised", and explains nothing â€” the exact silent no-op that keeps
  * honest NextClient / emulator users marked as cheaters. `ecd-`/`wcd-` are a
  * different import source and are left alone.
  */
@@ -215,7 +204,7 @@ function acs_client_rule_key(string $ruleId): string
 /**
  * The filenames a finding's subject actually identifies.
  *
- * Subjects take a few shapes: "name — C:\path\name.dll", "steamclient.dll: 1 byte(s)",
+ * Subjects take a few shapes: "name â€” C:\path\name.dll", "steamclient.dll: 1 byte(s)",
  * "hw.dll!SV_Frame @0x1 -> 0x2 (unbacked memory)" and bare "C:\cs\aimbot.dll".
  *
  * A bare-word needle must only ever match one of these filenames, never the surrounding
@@ -332,7 +321,7 @@ function acs_client_apply(array &$report, array $config): array
         $ruleId   = (string) ($finding['ruleId'] ?? '');
         $subject  = (string) ($finding['subject'] ?? '');
         $severity = strtoupper((string) ($finding['severity'] ?? 'INFO'));
-        if ($severity === 'INFO') continue;
+        if ($severity === 'INFO' || in_array($finding['evidenceKind'] ?? '', ['signature-hash', 'admin-policy'], true)) continue;
 
         foreach ((array) ($profile['explains'] ?? []) as $entry) {
             if (!is_array($entry) || !acs_client_explains_finding($entry, $ruleId, $subject)) {

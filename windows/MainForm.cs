@@ -40,7 +40,7 @@ internal static class AcpTheme
 
     public static readonly Color Ink         = Color.FromArgb(236, 232, 224);
     public static readonly Color Muted       = Color.FromArgb(148, 162, 176);
-    public static readonly Color Faint       = Color.FromArgb(96, 108, 122);
+    public static readonly Color Faint       = Color.FromArgb(129, 143, 159);
 
     public static readonly Color Red         = Color.FromArgb(226, 75, 60);
     public static readonly Color RedBright   = Color.FromArgb(255, 110, 94);
@@ -180,6 +180,9 @@ internal static class AcpFonts
 
     public static Font Mono(float px, FontStyle style = FontStyle.Regular) =>
         new(MonoFamily, Math.Max(6f, px), style, GraphicsUnit.Pixel);
+
+    public static Font Body(float px, FontStyle style = FontStyle.Regular) =>
+        new("Segoe UI", Math.Max(9f, px), style, GraphicsUnit.Pixel);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -862,10 +865,10 @@ public sealed class MainForm : Form
         _fTitle   = AcpFonts.Mono(S(11), FontStyle.Bold);
         _fEyebrow = AcpFonts.Mono(S(10), FontStyle.Bold);
         _fVerdict = AcpFonts.Display(S(42), FontStyle.Bold);
-        _fNote    = AcpFonts.Mono(S(10));
+        _fNote    = AcpFonts.Body(11f * _scale);
         _fStatNum = AcpFonts.Display(S(21), FontStyle.Bold);
-        _fStatCap = AcpFonts.Mono(S(9), FontStyle.Bold);
-        _fMono    = AcpFonts.Mono(S(11));
+        _fStatCap = AcpFonts.Body(10f * _scale, FontStyle.Bold);
+        _fMono    = AcpFonts.Body(12f * _scale);
         _fMonoSm  = AcpFonts.Mono(S(10), FontStyle.Bold);
         _fIrisNum = AcpFonts.Display(S(32), FontStyle.Bold);
         _fIrisCap = AcpFonts.Mono(S(9), FontStyle.Bold);
@@ -1552,12 +1555,12 @@ public sealed class MainForm : Form
         // Verdict, eased in on change so a result never just snaps into place.
         var vc = AcpTheme.Fade(_verdictColor, (int)(255 * _verdictFade));
         var lift = (int)((1f - _verdictFade) * S(8));
-        g.TextRenderingHint = TextRenderingHint.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         Txt.Draw(g, _verdict, _fVerdict, x, S(98) + lift, vc);
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-        Txt.DrawTracked(g, _verdictNote, _fNote, x, S(150),
-            AcpTheme.Fade(_verdictColor, (int)(155 * _verdictFade)), S(0.5f));
+        Txt.Draw(g, _verdictNote, _fNote, x, S(150),
+            AcpTheme.Fade(_verdictColor, (int)(205 * _verdictFade)));
 
         // Counters.
         DrawStat(g, x,          S(180), _detected.ToString(), "CHEATS",   _detected > 0 ? AcpTheme.RedBright : AcpTheme.Ink);

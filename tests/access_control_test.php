@@ -15,6 +15,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 putenv('ACS_ADMIN_TOKEN=admin-secret-token');
+putenv('ACS_PUBLIC_DASHBOARD=0'); // Test private sharing regardless of deployment defaults.
 putenv('ACS_REPORT_SECRET=report-signing-secret');
 putenv('ACS_BEHAVIOR_FILE=' . sys_get_temp_dir() . '/access_test.sqlite');
 

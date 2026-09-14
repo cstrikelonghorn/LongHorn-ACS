@@ -5,10 +5,12 @@ if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit('This script runs from the command line only.');
 }
+$scratch = getenv('SCRATCH') ?: sys_get_temp_dir();
+$acpDir = getenv('ACPDIR') ?: dirname(__DIR__);
 putenv('ACP_TELEMETRY_SECRET=t');
-putenv('ACP_BEHAVIOR_FILE=' . getenv('SCRATCH') . '/b2.sqlite');
-@unlink(getenv('SCRATCH') . '/b2.sqlite');
-require getenv('ACPDIR') . '/config.php';
+putenv('ACP_BEHAVIOR_FILE=' . $scratch . '/b2.sqlite');
+@unlink($scratch . '/b2.sqlite');
+require $acpDir . '/config.php';
 $pdo = acp_behavior_open($acpConfig);
 
 function ev(string $auth, string $rule, string $cat, float $w, string $sid = 's1'): array {

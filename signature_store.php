@@ -164,7 +164,7 @@ function uds_signature_store_save_rules(string $path, array $document, array $ru
 {
     $document['version'] = max(2, (int) ($document['version'] ?? 2));
     $document['name'] = (string) ($document['name'] ?? 'Unreal Demo Scanner Cheat Database');
-    $document['schema'] = 'single-signatures-array';
+    $document['schema'] = $document['schema'] ?? 'single-signatures-array';
     $document['generatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
     $document['counts'] = uds_signature_store_counts($rules);
     $document['signatures'] = array_values($rules);
@@ -208,7 +208,7 @@ function uds_signature_store_save_rules(string $path, array $document, array $ru
 /**
  * Generate a URL-safe slug ID from a cheat name.
  *
- * Example: "Vermillion D3D Multihack v2.1" → "cs16-vermillion-d3d-multihack-v2-1"
+ * Example: "Vermillion D3D Multihack v2.1" â†’ "cs16-vermillion-d3d-multihack-v2-1"
  */
 function uds_signature_store_generate_id(string $name, array $existingRules): string
 {
@@ -340,13 +340,13 @@ function uds_signature_store_test_input(array $rules, string $input): array
  * Build a well-formed signature array from the admin form input.
  *
  * Detection types map to scope sets the way the desktop ScannerEngine consumes them:
- *   - injected-dll → module, game-process, driver, hl-file, execution-trace, download-trace
- *   - process      → process, execution-trace, download-trace, client-report
- *   - driver       → driver
- *   - game-file    → hl-file, module
- *   - config       → hl-config, client-report
- *   - exec-trace   → execution-trace, hl-file
- *   - download     → download-trace
+ *   - injected-dll â†’ module, game-process, driver, hl-file, execution-trace, download-trace
+ *   - process      â†’ process, execution-trace, download-trace, client-report
+ *   - driver       â†’ driver
+ *   - game-file    â†’ hl-file, module
+ *   - config       â†’ hl-config, client-report
+ *   - exec-trace   â†’ execution-trace, hl-file
+ *   - download     â†’ download-trace
  */
 function uds_signature_store_build_rule(array $input, array $existingRules): array
 {

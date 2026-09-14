@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "revision": 1,
+    "blacklist": [
+        {
+            "id": "e542bed5798ea0eef4afbea1",
+            "matchType": "sha256",
+            "value": "36bb92b48771fe3e924dbf1e4a7731a095a5ef46737d2d2360385b811efecfde",
+            "severity": "DETECTED",
+            "enabled": true,
+            "scopes": [
+                "module",
+                "hl-file",
+                "process",
+                "driver",
+                "game-process"
+            ],
+            "reason": "Migrated explicit administrator corpus classification."
+        }
+    ],
+    "whitelist": []
+}

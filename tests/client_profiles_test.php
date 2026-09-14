@@ -101,7 +101,7 @@ echo "\nVERIFIED vs CLAIMED\n";
 
 // Same report, but with the marker hash actually on file for that build.
 $tmp = sys_get_temp_dir() . '/profiles_verified.json';
-$db = json_decode((string) file_get_contents($acpConfig['clientProfilesFile']), true);
+$db = acs_client_profiles($acpConfig);
 foreach ($db['profiles'] as $i => $p) {
     if ($p['id'] === 'nextclient') {
         $db['profiles'][$i]['knownHashes']['sha256'] = ['a1b2c3'];

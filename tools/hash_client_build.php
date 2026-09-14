@@ -14,7 +14,7 @@ declare(strict_types=1);
  *   php tools/hash_client_build.php <dir> --profile longhorn-cs16-pro --write
  *
  * Without --write it prints the JSON block for you to paste. With --write it inserts the
- * hashes into database/client_profiles.json for the named profile.
+ * hashes into database/cheats_database.json (clientProfiles) for the named profile.
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -105,21 +105,21 @@ if (!$write) {
     exit(0);
 }
 
-$path = $acpConfig['clientProfilesFile'];
+$path = $acpConfig['databaseFile'];
 $db   = json_decode((string) file_get_contents($path), true);
-if (!is_array($db) || !is_array($db['profiles'] ?? null)) {
+if (!is_array($db) || !is_array($db['clientProfiles']['profiles'] ?? null)) {
     fwrite(STDERR, "Cannot read {$path}\n");
     exit(1);
 }
 
 $updated = false;
-foreach ($db['profiles'] as $i => $p) {
+foreach ($db['clientProfiles']['profiles'] as $i => $p) {
     if (($p['id'] ?? '') !== $profile) {
         continue;
     }
     $existing = (array) ($p['knownHashes']['sha256'] ?? []);
     $merged   = array_values(array_unique(array_merge($existing, array_keys($found))));
-    $db['profiles'][$i]['knownHashes']['sha256'] = $merged;
+    $db['clientProfiles']['profiles'][$i]['knownHashes']['sha256'] = $merged;
     $updated = true;
     fwrite(STDERR, sprintf("Profile '%s': %d -> %d hash(es)\n", $profile, count($existing), count($merged)));
 }

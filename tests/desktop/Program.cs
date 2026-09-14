@@ -24,6 +24,23 @@ internal static class Checks
     [STAThread]
     private static void Main(string[] args)
     {
+        HybridChecks.Run(Check);
+        if (args.Length == 2 && args[0] == "--render-ui")
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            using var preview = new MainForm();
+            preview.ShowInTaskbar = false;
+            preview.StartPosition = FormStartPosition.Manual;
+            preview.Location = new Point(-32000, -32000);
+            preview.Show();
+            Application.DoEvents();
+            using var bitmap = new Bitmap(preview.Width, preview.Height);
+            preview.DrawToBitmap(bitmap, new Rectangle(0, 0, preview.Width, preview.Height));
+            bitmap.Save(Path.GetFullPath(args[1]));
+            Console.WriteLine("UI rendered: " + args[1]);
+            return;
+        }
         Check(ConfigAnalyzer.Analyze(new Dictionary<string, string> { ["config.cfg"] = "bind mwheelup +jump\nbind mouse1 +attack" }).Count == 0, "ordinary wheel-jump and attack binds are not automation");
         var script = ConfigAnalyzer.Analyze(new Dictionary<string, string> { ["a.cfg"] = "alias hop \"+jump;wait;-jump;wait;hop\"\nbind space hop" });
         Check(script.Any(f => f.RuleId == "acp-script-bunnyhop"), "recursive jump script remains detectable");
@@ -58,9 +75,13 @@ internal static class Checks
         Check(findings.Count == 1, "a full MD5 still matches exactly");
         const string combinedRule = """{"id":"combined","severity":"DETECTED","confidence":"high","scopes":["module"],"match":{"path_regex":"aimbot\\.dll$","md5":["9c1764e3bcd6e0a0bcd6e0a0bcd6e0a0"]}}""";
         var nameOnly = ScannerEngine.EvaluateRuleForTest(combinedRule, "module", @"C:\cs\aimbot.dll", "deadbeefdeadbeefdeadbeefdeadbeef");
-        Check(!nameOnly.Matched, "a filename does not bypass the hash condition on the same rule");
+        Check(nameOnly.Matched && nameOnly.Severity == "WARNING", "a filename match with non-matching hash matches as review WARNING");
+        var renamed = ScannerEngine.EvaluateRuleForTest(combinedRule, "module", @"C:\cs\clean_renamed.dll", "9c1764e3bcd6e0a0bcd6e0a0bcd6e0a0");
+        Check(renamed.Matched && renamed.Severity == "DETECTED", "a renamed cheat with verified hash matches as DETECTED");
         var confirmed = ScannerEngine.EvaluateRuleForTest(combinedRule, "module", @"C:\cs\aimbot.dll", "9c1764e3bcd6e0a0bcd6e0a0bcd6e0a0");
-        Check(confirmed.Matched && confirmed.Severity == "DETECTED", "all rule conditions plus a full hash produce DETECTED");
+        Check(confirmed.Matched && confirmed.Severity == "DETECTED", "matching both name and full hash produces DETECTED");
+        var clean = ScannerEngine.EvaluateRuleForTest(combinedRule, "module", @"C:\cs\clean.dll", "deadbeefdeadbeefdeadbeefdeadbeef");
+        Check(!clean.Matched, "neither name nor hash matching produces no match");
         var invalidRule = ScannerEngine.EvaluateRuleForTest("""{"id":"bad-regex","severity":"DETECTED","confidence":"high","scopes":["module"],"match":{"path_regex":"["}}""", "module", "anything", "");
         Check(!invalidRule.Valid && !invalidRule.Matched, "invalid database regex disables the rule explicitly");
         var verified = typeof(ScannerEngine).GetMethod("IsIntegrityVerifiedModule", BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -439,7 +460,7 @@ internal static class Checks
                 $"real ESK engine: v{esk.EngineVersion}, build {esk.EngineBuildNumber}, compiled {esk.EngineCompiled}");
         }
 
-        var hl = Process.GetProcessesByName("hl").FirstOrDefault();
+        var hl = Environment.GetEnvironmentVariable("ACS_LIVE_TESTS") == "1" ? Process.GetProcessesByName("hl").FirstOrDefault() : null;
         if (hl is not null)
         {
             var res = GameTraffic.Capture(hl.Id, CancellationToken.None, 3000);

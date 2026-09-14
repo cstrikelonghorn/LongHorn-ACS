@@ -8,6 +8,25 @@ try {
 
     $action = (string) ($_GET['action'] ?? 'database');
 
+    if ($action === 'file_lists') {
+        acp_require_admin($acpConfig);
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            acp_json_response(['ok' => true, 'lists' => acs_file_lists_load($acpConfig)]);
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') acp_json_response(['ok' => false, 'error' => 'POST required'], 405);
+        try {
+            $raw = (string) file_get_contents('php://input', false, null, 0, 16385);
+            if (strlen($raw) > 16384) throw new InvalidArgumentException('Entry too large.');
+            $input = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+            if (!is_array($input)) throw new InvalidArgumentException('Invalid entry.');
+            acp_json_response(['ok' => true, 'lists' => acs_file_lists_change($acpConfig, $input)]);
+        } catch (UnexpectedValueException $e) {
+            acp_json_response(['ok' => false, 'error' => $e->getMessage()], 409);
+        } catch (InvalidArgumentException | JsonException $e) {
+            acp_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
+        }
+    }
+
     if ($action === 'health') {
         $database = acp_load_database($acpConfig);
         acp_json_response([
@@ -84,6 +103,24 @@ try {
         try {
             $pdo = acp_corpus_open($acpConfig);
             $changed = acp_corpus_classify($pdo, $sha, $state, $note);
+            if ($changed) {
+                $lists = acs_file_lists_load($acpConfig);
+                // All live overrides reside in the one explicit policy file.
+                foreach (['blacklist', 'whitelist'] as $list) {
+                    foreach ($lists[$list] as $entry) {
+                        if ($entry['matchType'] === 'sha256' && $entry['value'] === strtolower(trim($sha))) {
+                            $lists = acs_file_lists_change($acpConfig, ['revision' => $lists['revision'], 'list' => $list,
+                                'operation' => 'delete', 'id' => $entry['id']]);
+                        }
+                    }
+                }
+                if (in_array($state, ['cheat', 'clean'], true)) {
+                    acs_file_lists_change($acpConfig, ['revision' => $lists['revision'],
+                        'list' => $state === 'clean' ? 'whitelist' : 'blacklist',
+                        'entry' => ['matchType' => 'sha256', 'value' => $sha, 'severity' => 'DETECTED',
+                            'reason' => trim($note) !== '' ? $note : 'Administrator reviewed this artifact in the corpus.']]);
+                }
+            }
         } catch (InvalidArgumentException $e) {
             acp_json_response(['ok' => false, 'error' => $e->getMessage()], 400);
         }
