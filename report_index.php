@@ -346,6 +346,7 @@ function acp_report_index_status_counts(array $config): array
     $row = $pdo->query(
         "SELECT COUNT(*) AS total,
                 SUM(CASE WHEN status = 'DETECTED' THEN 1 ELSE 0 END) AS detected,
+                SUM(CASE WHEN status = 'WARNING'  THEN 1 ELSE 0 END) AS warning,
                 SUM(CASE WHEN status = 'CLEAN'    THEN 1 ELSE 0 END) AS clean
          FROM reports"
     )->fetch();
@@ -353,6 +354,7 @@ function acp_report_index_status_counts(array $config): array
     return [
         'total'    => (int) ($row['total'] ?? 0),
         'detected' => (int) ($row['detected'] ?? 0),
+        'warning'  => (int) ($row['warning'] ?? 0),
         'clean'    => (int) ($row['clean'] ?? 0),
     ];
 }

@@ -36,10 +36,6 @@ internal static class ConfigAnalyzer
     private static readonly string[] DuckTokens = { "+duck", "-duck" };
     private static readonly string[] RecoilCvars = { "m_pitch", "cl_pitchspeed", "cl_pitchdown", "cl_pitchup", "cl_yawspeed" };
 
-    // Mouse-wheel binds cannot be held down, so a wheel bound to +jump is the classic
-    // "scroll to bunny-hop" setup rather than a normal keybind.
-    private static readonly string[] WheelKeys = { "mwheelup", "mwheeldown" };
-
     // ---------------------------------------------------------------------------------------
     // Entry point
     // ---------------------------------------------------------------------------------------
@@ -347,30 +343,6 @@ internal static class ConfigAnalyzer
                     facts.Summary(name),
                     "Resolved alias graph contains a self-referencing chain with 'wait' in it. This is the engine "
                     + "primitive every automation script is built on; review what the chain drives."));
-            }
-        }
-    }
-
-    private static void DetectWheelJump(List<(string Key, string Body, string File)> binds, List<Finding> findings)
-    {
-        foreach (var (key, body, file) in binds)
-        {
-            if (!WheelKeys.Contains(key.ToLowerInvariant())) {
-                continue;
-            }
-
-            var lower = body.ToLowerInvariant();
-            if (lower.Contains("+jump") || lower.Contains("jump"))
-            {
-                findings.Add(new Finding(
-                    "acp-script-wheel-jump",
-                    "Jump bound to the mouse wheel",
-                    "WARNING",
-                    file,
-                    $"bind {key} \"{body}\"",
-                    "The mouse wheel cannot be held, so binding jump to it produces machine-timed repeated jumps. "
-                    + "Widely treated as a bunny-hop aid; check the server's rules before acting on this alone."));
-                return;
             }
         }
     }

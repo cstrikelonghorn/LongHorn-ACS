@@ -35,7 +35,7 @@ try {
     $database = acp_load_database($acpConfig);
     $counts = $database['counts'] ?? [];
     $selectedReport = $reportId !== '' ? acp_load_report($acpConfig, $reportId) : null;
-    $reportStats = $canViewList ? acp_report_status_counts($acpConfig) : ['total' => 0, 'detected' => 0, 'clean' => 0];
+    $reportStats = $canViewList ? acp_report_status_counts($acpConfig) : ['total' => 0, 'detected' => 0, 'warning' => 0, 'clean' => 0];
     $listTotal = $isSearch ? acp_search_report_count($acpConfig, $searchQuery, $searchScope) : $reportStats['total'];
     $totalPages = max(1, (int) ceil($listTotal / $perPage));
     $page = min($page, $totalPages);
@@ -265,6 +265,7 @@ function acp_field_group(string $label): void
         <div class="stat"><strong><?= (int) ($counts['totalSignatures'] ?? count($database['signatures'] ?? [])) ?></strong><span>integrated signatures</span></div>
         <div class="stat"><strong><?= (int) $reportStats['total'] ?></strong><span>recent scans</span></div>
         <div class="stat s-red"><strong><?= (int) $reportStats['detected'] ?></strong><span>detected reports</span></div>
+        <div class="stat s-amber"><strong><?= (int) ($reportStats['warning'] ?? 0) ?></strong><span>under review</span></div>
         <div class="stat s-green"><strong><?= (int) $reportStats['clean'] ?></strong><span>clean reports</span></div>
     </section>
     <?php endif; ?>

@@ -651,8 +651,12 @@ function acp_suppressed_finding(array $finding): bool
     // Suppression must be an explicit, auditable per-finding decision. Never hide a DETECTED
     // item, and never globally suppress Steam/emulator rules merely because another client may
     // legitimately contain a similarly named file.
-    return !empty($finding['suppressed'])
-        && strtoupper((string) ($finding['severity'] ?? 'INFO')) !== 'DETECTED';
+    $id = (string) ($finding['ruleId'] ?? '');
+    $sev = strtoupper((string) ($finding['severity'] ?? 'INFO'));
+    if ($sev !== 'DETECTED' && ($id === 'acs-client-distribution' || ($id === 'acs-signed-module-modified' && $sev === 'INFO'))) {
+        return true;
+    }
+    return !empty($finding['suppressed']) && $sev !== 'DETECTED';
 }
 
 function acp_report_summary(array $report): array
@@ -2323,12 +2327,14 @@ function acp_report_status_counts(array $config): array
         error_log('[ACS] report index status counts unavailable, falling back: ' . $e->getMessage());
     }
 
-    $stats = ['total' => 0, 'detected' => 0, 'clean' => 0];
+    $stats = ['total' => 0, 'detected' => 0, 'warning' => 0, 'clean' => 0];
     foreach (acp_recent_reports($config, 500) as $summary) {
         $stats['total']++;
         $status = strtoupper((string) ($summary['status'] ?? ''));
         if ($status === 'DETECTED') {
             $stats['detected']++;
+        } elseif ($status === 'WARNING') {
+            $stats['warning']++;
         } elseif ($status === 'CLEAN') {
             $stats['clean']++;
         }

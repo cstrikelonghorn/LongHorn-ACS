@@ -87,7 +87,6 @@ $navDownloadHref = 'download.php';
         </select>
         <select id="sigScopeFilter" class="acm-filter">
             <option value="">All Scopes</option>
-            <option value="demo-file">Demo File</option>
             <option value="process">Process</option>
             <option value="module">Module/DLL</option>
             <option value="driver">Driver</option>
@@ -143,7 +142,6 @@ $navDownloadHref = 'download.php';
                     <option value="exec-trace">🕐 Execution Trace (Prefetch/UserAssist)</option>
                     <option value="download">⬇️ Download Trace</option>
                     <option value="memory">🧠 Memory Pattern</option>
-                    <option value="demo">🎬 Demo File Behavior</option>
                 </select>
             </div>
             <div class="acm-field">
@@ -153,7 +151,6 @@ $navDownloadHref = 'download.php';
                     <option value="sha256">🔐 SHA-256 Hash</option>
                     <option value="md5">🔑 MD5 Hash</option>
                     <option value="file_contains">📄 File Contains String</option>
-                    <option value="output_regex">📊 Scanner Output Regex</option>
                     <option value="report_regex">📋 Report Regex</option>
                     <option value="config_regex">📝 Config Regex</option>
                     <option value="driver_regex">🔧 Driver Regex</option>
@@ -581,7 +578,6 @@ $('addMatchType').addEventListener('change', () => {
         'sha256': 'Paste one or more SHA-256 hashes (64 hex chars), one per line.',
         'md5': 'Paste one or more MD5 hashes (32 hex chars), one per line.',
         'file_contains': 'A literal string to search inside game files.',
-        'output_regex': 'A PHP/PCRE regex to match scanner output text.',
         'report_regex': 'A PHP/PCRE regex to match client report text.',
         'config_regex': 'A PHP/PCRE regex to match game config lines.',
         'driver_regex': 'A PHP/PCRE regex to match loaded driver names.',

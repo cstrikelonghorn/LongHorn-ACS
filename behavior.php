@@ -405,7 +405,10 @@ function acp_behavior_client_risk(array $config, string $steam64): array
     $detected = (int) ($summary['detected'] ?? 0);
     $warnings = (int) ($summary['warnings'] ?? 0);
 
-    $risk = min(100.0, $detected * 40.0 + $warnings * 7.0);
+    // Client warnings are capped at 30.0 max: reviews alone can NEVER reach 40 (review) or 75 (cheat)
+    $warningRisk = min(30.0, $warnings * 3.0);
+    $detectedRisk = $detected > 0 ? (50.0 + ($detected - 1) * 25.0) : 0.0;
+    $risk = min(100.0, $detectedRisk + $warningRisk);
     $risk *= acp_risk_decay((string) ($summary['uploadedAt'] ?? gmdate('c')));
 
     return [
@@ -432,9 +435,10 @@ function acp_behavior_combine(float $serverRisk, float $clientRisk): float
     return (float) round(100.0 * (1.0 - (1.0 - $s) * (1.0 - $c)), 1);
 }
 
-function acp_behavior_verdict(float $risk): string
+function acp_behavior_verdict(float $risk, int $detected = 0, float $serverRisk = 0.0): string
 {
-    if ($risk >= 75.0) return 'cheat';
+    // A player CANNOT have verdict 'cheat' without verified in-game DETECTED evidence or authoritative server telemetry
+    if ($risk >= 75.0 && ($detected > 0 || $serverRisk >= 50.0)) return 'cheat';
     if ($risk >= 40.0) return 'review';
     return 'clean';
 }
@@ -454,9 +458,8 @@ function acp_behavior_recompute(PDO $pdo, string $steam64, ?array $config = null
         $client['risk'] = (float) ($prev->fetchColumn() ?: 0.0);
     }
 
-    $risk    = acp_behavior_combine($server['risk'], (float) $client['risk']);
-    $verdict = acp_behavior_verdict($risk);
-    $now     = gmdate('Y-m-d\TH:i:s\Z');
+    $risk = acp_behavior_combine($server['risk'], (float) $client['risk']);
+    $now  = gmdate('Y-m-d\TH:i:s\Z');
 
     $agg = $pdo->prepare("SELECT
             COUNT(*)                                              AS sessions,
@@ -477,6 +480,9 @@ function acp_behavior_recompute(PDO $pdo, string $steam64, ?array $config = null
         FROM evidence WHERE steam64 = :s");
     $counts->execute([':s' => $steam64]);
     $c = $counts->fetch() ?: [];
+
+    $totalDetected = ((int) ($client['detected'] ?? 0)) + ((int) ($c['detected'] ?? 0));
+    $verdict = acp_behavior_verdict($risk, $totalDetected, (float) $server['risk']);
 
     // Nothing is known about this id. Writing a row anyway would let any caller conjure
     // players into the table - and into the dashboard counts - just by asking about an

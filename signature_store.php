@@ -68,14 +68,6 @@ function uds_signature_store_rules_for_channel(array $document, string $channel)
     return array_values(array_filter(
         uds_signature_store_rules($document),
         static function (array $rule) use ($channel): bool {
-            if ($channel === 'demo') {
-                return uds_signature_rule_has_scope($rule, 'demo-file')
-                    || (!isset($rule['scopes']) && (
-                        uds_signature_rule_has_match_prefix($rule, 'output_')
-                        || uds_signature_rule_has_match_prefix($rule, 'file_')
-                    ));
-            }
-
             if ($channel === 'client-report') {
                 return uds_signature_rule_has_scope($rule, 'client-report')
                     || uds_signature_rule_has_match_prefix($rule, 'report_');
@@ -103,15 +95,11 @@ function uds_signature_store_counts(array $rules): array
         'clientLive' => 0,
         'clientReport' => 0,
         'config' => 0,
-        'demoFile' => 0,
     ];
 
     foreach ($rules as $rule) {
         if (($rule['enabled'] ?? true) !== false) {
             $counts['enabled']++;
-        }
-        if (uds_signature_rule_has_scope($rule, 'demo-file')) {
-            $counts['demoFile']++;
         }
         if (uds_signature_rule_has_scope($rule, 'hl-config')) {
             $counts['config']++;
@@ -295,7 +283,7 @@ function uds_signature_store_test_input(array $rules, string $input): array
 
         // Test regex keys
         if ($matchedBy === '') {
-            foreach (['output_regex', 'report_regex', 'path_regex', 'driver_regex', 'config_regex'] as $key) {
+            foreach (['report_regex', 'path_regex', 'driver_regex', 'config_regex'] as $key) {
                 if (isset($match[$key])) {
                     $patterns = is_array($match[$key]) ? $match[$key] : [$match[$key]];
                     foreach ($patterns as $pattern) {
@@ -359,7 +347,6 @@ function uds_signature_store_test_input(array $rules, string $input): array
  *   - config       → hl-config, client-report
  *   - exec-trace   → execution-trace, hl-file
  *   - download     → download-trace
- *   - demo         → demo-file
  */
 function uds_signature_store_build_rule(array $input, array $existingRules): array
 {
@@ -387,7 +374,6 @@ function uds_signature_store_build_rule(array $input, array $existingRules): arr
         'config'       => ['hl-config', 'client-report'],
         'exec-trace'   => ['execution-trace', 'hl-file'],
         'download'     => ['download-trace'],
-        'demo'         => ['demo-file'],
         'memory'       => ['memory', 'module', 'game-process'],
     ];
     $scopes = $scopeMap[$detectionType] ?? ['process', 'execution-trace'];
@@ -420,9 +406,6 @@ function uds_signature_store_build_rule(array $input, array $existingRules): arr
             break;
         case 'file_contains':
             $match['file_contains'] = $matchValue;
-            break;
-        case 'output_regex':
-            $match['output_regex'] = $matchValue;
             break;
         case 'report_regex':
             $match['report_regex'] = $matchValue;

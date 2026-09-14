@@ -20,8 +20,7 @@ if (PHP_SAPI !== 'cli') {
 // The engine blocks below are the scanner's actual output for the two installs on the
 // development machine (a retail Steam Half-Life and the ESK client), not invented shapes.
 
-require getenv('ACPDIR') . '/config.php';
-require (getenv('ACPDIR') ?: dirname(__DIR__)) . '/config.php';
+require_once (getenv('ACPDIR') ?: dirname(__DIR__)) . '/config.php';
 
 $pass = 0; $fail = 0;
 function ok(string $what, bool $cond, string $extra = ''): void {
