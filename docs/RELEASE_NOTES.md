@@ -1,0 +1,17 @@
+# ACS 1.0.0
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable with the .NET runtime built in — no installer, no extra files. Runs as administrator. Requires a running compatible Counter-Strike 1.6/GoldSrc client and an operator-provided report server configuration. No endpoint or secret is bundled.
+
+- **Single executable.** The whole app, including its artwork, is `ACS-Scanner-1.0.0-windows.exe`.
+- **Client identity from signatures.** Retail Steam is reported only when the launcher and engine are validly signed by Valve and no emulator loads Steam from the game folder. Non-Steam editions are named from load paths and markers, and the engine build date is read from the engine binary.
+- **Modified is not forged.** A Valve-signed file changed after signing (how non-Steam editions patch the engine) is recorded with its hash instead of being reported as a forged signature. A certificate that does not chain to a trusted root is still reported as forged.
+- **Stricter module trust.** A module's name alone no longer earns trust; it must be part of the game install or validly signed by a trusted publisher.
+- **Automatic upload after consent.** The privacy screen before a scan states that the report uploads when the scan finishes; there is no second prompt.
+- **Build fingerprint.** Each report records the SHA-256 prefix of the executable that produced it.
+- Redesigned desktop interface and evidence log.
+
+Client profiles include Steam/non-Steam distributions, NextClient, GoldClient, GSClient, RevEmu and server-platform components. Profile recognition is not a compatibility certification for every build. The desktop scans on demand. Continuous gameplay behavior analysis requires the separately deployed server plugin, which is not included.
+
+Known limitations: unsigned executable; no independent audit; no verified antivirus report for this exact release; compiler warnings remain; no measured real-world false-positive/recall benchmark; operator-managed data retention. This release does not claim superiority to VAC, WarGods or ECD, detection of every cheat, or immunity to bypass.
+
+See `VALIDATION.md`, `PRIVACY.md`, and `VERIFY.md` for evidence and limitations.

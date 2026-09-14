@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "files": [
+    {
+      "path": "ACS-Scanner-1.0.0-windows.exe",
+      "sha256": "bc6560970bfbb1553639b8dc8036ef88993cb138a1d4e181b32e3af6c4fb5c69",
+      "bytes": 4067328
+    },
+    {
+      "path": "DOTNET-LICENSE.txt",
+      "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b",
+      "bytes": 1139
+    },
+    {
+      "path": "DOTNET-NOTICES.txt",
+      "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21",
+      "bytes": 78041
+    },
+    {
+      "path": "WINDOWSDESKTOP-LICENSE.txt",
+      "sha256": "a89886665765362eb77e0f8e26602c924520041d1711b2eedc136434fe4d01ab",
+      "bytes": 1137
+    }
+  ]
+}

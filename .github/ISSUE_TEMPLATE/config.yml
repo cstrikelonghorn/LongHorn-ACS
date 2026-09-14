@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Read security reporting instructions
+    url: https://github.com/cstrikelonghorn/LongHorn-ACS/blob/main/SECURITY.md
+    about: Do not publish credentials or player reports in issues.
