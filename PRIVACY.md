@@ -1,6 +1,6 @@
 # ACS privacy and data access
 
-Applies to ACS 1.0.0. Updated 2026-09-13.
+Applies to ACS 1.0.0. Updated 2026-09-14.
 
 ACS is an on-demand anti-cheat evidence scanner. Before each scan, the app shows the configured report destination and what the scan collects, and states that the report is uploaded automatically when the scan finishes. Choosing **Cancel** on that screen means nothing is scanned or sent. There is no second confirmation after the scan.
 
