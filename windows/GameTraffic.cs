@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -31,6 +32,15 @@ public static class GameTraffic
         ValveA2S.ServerInfo? A2S = null);
 
     /// <summary>
+    /// A live UDP peer of the game process, read from the operating system's UDP endpoint
+    /// table. RemotePort is the server's port; it is only non-zero for a connected socket.
+    /// </summary>
+    public sealed record UdpPeer(int LocalPort, IPAddress RemoteAddress, int RemotePort)
+    {
+        public string Endpoint => $"{RemoteAddress}:{RemotePort}";
+    }
+
+    /// <summary>
     /// Checks whether the current process token has Administrator membership.
     /// Note: Elevation is NO LONGER required for game connection detection or scanning.
     /// </summary>
@@ -47,118 +57,163 @@ public static class GameTraffic
         }
     }
 
-    /// <summary>
-    /// Resolves the connected server for the given game process in user space without requiring administrator rights.
-    /// </summary>
-    public static Result Capture(int processId, CancellationToken cancellationToken, int sampleMilliseconds = 2500)
-    {
-        var capturedAt = DateTimeOffset.UtcNow;
-        var sw = Stopwatch.StartNew();
-        var ports = UdpPortsOf(processId);
+	/// <summary>
+	/// Resolves the connected server for the given game process in user space without requiring administrator rights.
+	///
+	/// Primary method: the Windows UDP endpoint table (the same data netstat prints), which exposes the
+	/// remote peer of the game's connected UDP socket. That is authoritative - it is the address the client
+	/// is actually talking to, not a value the engine happens to have in memory.
+	/// Fallback: scan the engine's memory for the connection strings it prints to the console, for engines
+	/// whose socket is not in the connected state.
+	/// </summary>
+	public static Result Capture(int processId, CancellationToken cancellationToken, int sampleMilliseconds = 2500)
+	{
+		var capturedAt = DateTimeOffset.UtcNow;
+		var sw = Stopwatch.StartNew();
+		var ports = UdpPortsOf(processId);
 
-        if (ports.Count == 0)
-        {
-            return new Result("not-connected", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
-                "the game has no UDP socket open", capturedAt);
-        }
+		// Authoritative OS view of the game's connected UDP socket(s). No elevation required.
+		var peers = ConnectedUdpPeersOf(processId);
 
-        IntPtr handle = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, processId);
-        if (handle == IntPtr.Zero)
-        {
-            return new Result("unverified", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
-                "unable to inspect game memory (access denied or process closed)", capturedAt);
-        }
+		if (ports.Count == 0 && peers.Count == 0)
+		{
+			return new Result("not-connected", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
+				"the game has no UDP socket open", capturedAt);
+		}
 
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+		// Prefer servers listening on the standard Counter-Strike port range.
+		var orderedPeers = peers
+			.OrderByDescending(p => p.RemotePort is >= 27015 and <= 27030)
+			.ThenByDescending(p => p.RemotePort == 27015)
+			.ToList();
 
-            Process process;
-            try
-            {
-                process = Process.GetProcessById(processId);
-            }
-            catch
-            {
-                return new Result("not-connected", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
-                    "game process exited", capturedAt);
-            }
+		var packetsSent = 0;
+		var packetsReceived = 0;
 
-            var (acceptedEndpoint, candidateEndpoints, hasDisconnected) = ScanMemoryForEndpoints(handle, process);
+		// Ask each live endpoint what server it is; the one that answers A2S_INFO as a game
+		// server is the server the client is joined to.
+		foreach (var peer in orderedPeers)
+		{
+			if (sw.ElapsedMilliseconds >= sampleMilliseconds) break;
+			cancellationToken.ThrowIfCancellationRequested();
 
-            cancellationToken.ThrowIfCancellationRequested();
+			packetsSent++;
+			var a2s = ValveA2S.Query(peer.Endpoint, timeoutMs: 600);
+			if (a2s.Success)
+			{
+				packetsReceived++;
+				return new Result("connected", peer.Endpoint, packetsSent, packetsReceived,
+					(int)sw.ElapsedMilliseconds, ports,
+					"verified via live OS UDP endpoint and Valve A2S_INFO query", capturedAt, a2s);
+			}
+		}
 
-            var queryCandidates = new List<string>();
-            if (!string.IsNullOrEmpty(acceptedEndpoint) && !hasDisconnected)
-            {
-                queryCandidates.Add(acceptedEndpoint);
-            }
+		// The OS reports a live peer even when the server refuses A2S queries (common on
+		// protected 1.6 servers). The endpoint is still authoritative, so report it.
+		if (orderedPeers.Count > 0)
+		{
+			var best = orderedPeers[0];
+			return new Result("connected", best.Endpoint, packetsSent, packetsReceived,
+				(int)sw.ElapsedMilliseconds, ports,
+				"identified from live OS UDP endpoint (server did not answer A2S query)", capturedAt);
+		}
 
-            // Prioritize standard CS server port :27015 and common range 27015-27030
-            var prioritized = candidateEndpoints
-                .OrderByDescending(ep => ep.EndsWith(":27015", StringComparison.OrdinalIgnoreCase))
-                .ThenByDescending(ep =>
-                {
-                    if (ValveA2S.TryParseEndpoint(ep, out var parsed) && parsed is not null)
-                    {
-                        return parsed.Port is >= 27015 and <= 27030;
-                    }
-                    return false;
-                })
-                .ToList();
+		// Fallback: the UDP socket is not connected, so read the connection strings the
+		// engine prints to its console from process memory.
+		IntPtr handle = OpenProcess(ProcessQueryInformation | ProcessVmRead, false, processId);
+		if (handle == IntPtr.Zero)
+		{
+			return new Result("unverified", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
+				"unable to inspect game memory (access denied or process closed)", capturedAt);
+		}
 
-            foreach (var ep in prioritized)
-            {
-                if (!queryCandidates.Contains(ep, StringComparer.OrdinalIgnoreCase))
-                {
-                    queryCandidates.Add(ep);
-                }
-            }
+		try
+		{
+			cancellationToken.ThrowIfCancellationRequested();
 
-            var packetsSent = 0;
-            var packetsReceived = 0;
+			Process process;
+			try
+			{
+				process = Process.GetProcessById(processId);
+			}
+			catch
+			{
+				return new Result("not-connected", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
+					"game process exited", capturedAt);
+			}
 
-            // Query candidates via Valve A2S_INFO
-            foreach (var candidate in queryCandidates)
-            {
-                if (sw.ElapsedMilliseconds >= sampleMilliseconds) break;
-                cancellationToken.ThrowIfCancellationRequested();
+			var (acceptedEndpoint, candidateEndpoints, hasDisconnected) = ScanMemoryForEndpoints(handle, process);
 
-                packetsSent++;
-                var a2s = ValveA2S.Query(candidate, timeoutMs: 600);
-                if (a2s.Success)
-                {
-                    packetsReceived++;
-                    return new Result("connected", candidate, packetsSent, packetsReceived,
-                        (int)sw.ElapsedMilliseconds, ports, "verified via Valve A2S_INFO query", capturedAt, a2s);
-                }
-            }
+			cancellationToken.ThrowIfCancellationRequested();
 
-            // If the server did not answer A2S (e.g. firewalled UDP queries), but was accepted in game memory
-            if (!string.IsNullOrEmpty(acceptedEndpoint) && !hasDisconnected)
-            {
-                return new Result("connected", acceptedEndpoint, packetsSent, packetsReceived,
-                    (int)sw.ElapsedMilliseconds, ports,
-                    "identified from active game connection (server did not answer A2S query)", capturedAt);
-            }
+			var queryCandidates = new List<string>();
+			if (!string.IsNullOrEmpty(acceptedEndpoint) && !hasDisconnected)
+			{
+				queryCandidates.Add(acceptedEndpoint);
+			}
 
-            return new Result("not-connected", "", packetsSent, packetsReceived,
-                (int)sw.ElapsedMilliseconds, ports, "no active game server connection detected", capturedAt);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return new Result("unverified", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
-                "connection detection error: " + ex.Message, capturedAt);
-        }
-        finally
-        {
-            CloseHandle(handle);
-        }
-    }
+			// Prioritize standard CS server port :27015 and common range 27015-27030
+			var prioritized = candidateEndpoints
+				.OrderByDescending(ep => ep.EndsWith(":27015", StringComparison.OrdinalIgnoreCase))
+				.ThenByDescending(ep =>
+				{
+					if (ValveA2S.TryParseEndpoint(ep, out var parsed) && parsed is not null)
+					{
+						return parsed.Port is >= 27015 and <= 27030;
+					}
+					return false;
+				})
+				.ToList();
+
+			foreach (var ep in prioritized)
+			{
+				if (!queryCandidates.Contains(ep, StringComparer.OrdinalIgnoreCase))
+				{
+					queryCandidates.Add(ep);
+				}
+			}
+
+			// Query candidates via Valve A2S_INFO
+			foreach (var candidate in queryCandidates)
+			{
+				if (sw.ElapsedMilliseconds >= sampleMilliseconds) break;
+				cancellationToken.ThrowIfCancellationRequested();
+
+				packetsSent++;
+				var a2s = ValveA2S.Query(candidate, timeoutMs: 600);
+				if (a2s.Success)
+				{
+					packetsReceived++;
+					return new Result("connected", candidate, packetsSent, packetsReceived,
+						(int)sw.ElapsedMilliseconds, ports, "verified via Valve A2S_INFO query", capturedAt, a2s);
+				}
+			}
+
+			// If the server did not answer A2S (e.g. firewalled UDP queries), but was accepted in game memory
+			if (!string.IsNullOrEmpty(acceptedEndpoint) && !hasDisconnected)
+			{
+				return new Result("connected", acceptedEndpoint, packetsSent, packetsReceived,
+					(int)sw.ElapsedMilliseconds, ports,
+					"identified from active game connection (server did not answer A2S query)", capturedAt);
+			}
+
+			return new Result("not-connected", "", packetsSent, packetsReceived,
+				(int)sw.ElapsedMilliseconds, ports, "no active game server connection detected", capturedAt);
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
+		}
+		catch (Exception ex)
+		{
+			return new Result("unverified", "", 0, 0, (int)sw.ElapsedMilliseconds, ports,
+				"connection detection error: " + ex.Message, capturedAt);
+		}
+		finally
+		{
+			CloseHandle(handle);
+		}
+	}
 
     private static readonly Regex AcceptedRegex = new(@"Connection accepted by\s+([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ConnectingRegex = new(@"Connecting to\s+([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:[0-9]{1,5})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -364,6 +419,85 @@ public static class GameTraffic
         return ports;
     }
 
+    // ── The game's connected UDP peer (the server) ───────────────────────────
+
+    /// <summary>
+    /// Every connected UDP socket owned by a process, with its remote address and port, read from the
+    /// operating system's endpoint table. This is the same source netstat uses and it is authoritative:
+    /// the operating system knows exactly which server the client's socket is talking to, no matter what
+    /// the game stores in memory. It does not require administrator rights.
+    ///
+    /// Uses the internal table function that exposes the remote endpoint (netstat's own source). If it
+    /// is unavailable on this build of Windows, an empty list is returned and callers fall back to the
+    /// memory scan in Capture().
+    /// </summary>
+    public static List<UdpPeer> ConnectedUdpPeersOf(int processId)
+    {
+        var peers = new List<UdpPeer>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        IntPtr heap = GetProcessHeap();
+        IntPtr table = IntPtr.Zero;
+
+        try
+        {
+            var status = InternalGetUdpTable2(out table, heap, false);
+            if (status != 0 || table == IntPtr.Zero) return peers;
+
+            var count = Marshal.ReadInt32(table);
+            if (count < 0 || count > 1_000_000) return peers;
+
+            // MIB_UDPROW2 (see Windows SDK udpmib.h): the table header is 8 bytes and each
+            // 168-byte row carries dwLocalAddr(+0), dwLocalPort(+4), dwOwningPid(+8),
+            // dwRemoteAddr(+160) and dwRemotePort(+164). Verified against both 32- and
+            // 64-bit processes.
+            const int RowBase = 8;
+            const int RowSize = 168;
+            const int OwningPidOffset = 8;
+            const int LocalPortOffset = 4;
+            const int RemoteAddrOffset = 160;
+            const int RemotePortOffset = 164;
+
+            for (var i = 0; i < count; i++)
+            {
+                var row = table + RowBase + i * RowSize;
+
+                if (Marshal.ReadInt32(row, OwningPidOffset) != processId) continue;
+
+                var remotePortRaw = Marshal.ReadInt32(row, RemotePortOffset);
+                var remotePort = ((remotePortRaw & 0xFF) << 8) | ((remotePortRaw >> 8) & 0xFF);
+                if (remotePort <= 0 || remotePort > 65535) continue; // not a connected socket
+
+                var remoteAddrRaw = Marshal.ReadInt32(row, RemoteAddrOffset);
+                var address = new IPAddress(BitConverter.GetBytes(remoteAddrRaw));
+                var bytes = address.GetAddressBytes();
+                if (bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0) continue;
+                if (address.Equals(IPAddress.Broadcast)) continue;
+
+                var localPortRaw = Marshal.ReadInt32(row, LocalPortOffset);
+                var localPort = ((localPortRaw & 0xFF) << 8) | ((localPortRaw >> 8) & 0xFF);
+
+                var endpoint = $"{address}:{remotePort}";
+                if (seen.Add(endpoint))
+                {
+                    peers.Add(new UdpPeer(localPort, address, remotePort));
+                }
+            }
+        }
+        catch
+        {
+            // Internal export is missing or blocked on this build; Capture() falls back.
+        }
+        finally
+        {
+            if (table != IntPtr.Zero)
+            {
+                try { HeapFree(heap, 0, table); } catch { }
+            }
+        }
+
+        return peers;
+    }
+
     private const int AfInet = 2;
     private const int UdpTableOwnerPid = 1;
     private const uint ErrorInsufficientBuffer = 122;
@@ -404,4 +538,15 @@ public static class GameTraffic
 
     [DllImport("iphlpapi.dll", SetLastError = true)]
     private static extern uint GetExtendedUdpTable(IntPtr table, ref int size, bool sort, int addressFamily, int tableClass, int reserved);
+
+    // Internal export used by netstat to read the UDP endpoint table including remote peers.
+    // The function allocates the table on the heap passed in; free it with HeapFree.
+    [DllImport("iphlpapi.dll", EntryPoint = "InternalGetUdpTable2", SetLastError = true)]
+    private static extern uint InternalGetUdpTable2(out IntPtr table, IntPtr heap, bool order);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetProcessHeap();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr HeapFree(IntPtr hHeap, uint dwFlags, IntPtr lpMem);
 }

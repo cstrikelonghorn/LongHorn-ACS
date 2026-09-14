@@ -29,6 +29,15 @@ Every `.cfg` / `.rc` under the mod folders is tokenised, the `alias` graph is re
 ### 7. Game build & client recognition
 Steam, non-Steam repacks, NextClient, GSClient, GoldClient, RevEmu/RevCrew, SmartSteamEmu, Goldberg and others are identified by module/file markers and known hashes, so a client's own runtime detours are **not** treated as cheating.
 
+### 8. Live server connection
+The scanner records **which server the client is actually joined to** at scan time, so a report can never be presented from a different server or from the main menu. It is read from the operating system, not from the game:
+
+- The Windows UDP endpoint table (the same data `netstat` prints) exposes the remote address and port of the game's **connected** UDP socket. The OS knows exactly which server the socket is talking to, regardless of what the game's memory contains.
+- The server is then queried with Valve **A2S_INFO** for its name, map, player count, VAC state and protocol. A server that refuses the query is still reported by its exact IP:Port, because the OS endpoint is authoritative.
+- If the socket is not in the connected state, a memory fallback reads the connection strings the engine prints to its console.
+
+Throughout the whole scan a **continuous monitor** samples the connection every two seconds, producing a hash-chained list of timestamped proof points. This detects a player disconnecting or switching servers mid-scan, which is flagged in the report. The result is shown as the report's **Active Server** and **Server Map**, or **No Server Detected** when the client was not joined.
+
 ## Server-side (ReHLDS plugin)
 
 The plugin reads the usercmd stream the server already receives:

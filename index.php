@@ -528,6 +528,13 @@ function acp_field_group(string $label): void
                                     <span class="dim-text"><?= acp_h($serverView['name']) ?></span>
                                 <?php endif; ?>
                                 <div class="srv-addr" title="<?= acp_h($serverView['note']) ?>"><?= acp_h($serverView['note']) ?></div>
+                                <?php if (!empty($serverView['warnings'])): ?>
+                                    <div class="srv-warnings">
+                                        <?php foreach ($serverView['warnings'] as $warning): ?>
+                                            <span class="srv-warning-chip"><?= acp_h($warning) ?></span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
                             </span>
                         </div>
                         <div class="t-row">
@@ -540,6 +547,62 @@ function acp_field_group(string $label): void
                                 <?php endif; ?>
                             </span>
                         </div>
+                        <?php if ($serverView['evidence'] !== null): ?>
+                        <div class="t-row">
+                            <span class="t-label">Connection Evidence</span>
+                            <span class="t-value">
+                                <details class="evidence-chain-details">
+                                    <summary>
+                                        <?php
+                                        $ev = $serverView['evidence'];
+                                        $proofCount = (int) ($ev['proofPointCount'] ?? 0);
+                                        $consistent = (bool) ($ev['consistentConnection'] ?? true);
+                                        $disconnects = (int) ($ev['disconnectionEvents'] ?? 0);
+                                        $statusIcon = $consistent && $disconnects === 0 ? '✓' : '⚠';
+                                        $statusClass = $consistent && $disconnects === 0 ? 'evidence-ok' : 'evidence-warning';
+                                        ?>
+                                        <span class="evidence-badge <?= $statusClass ?>">
+                                            <?= $statusIcon ?> <?= $proofCount ?> proof points
+                                        </span>
+                                        <?php if ($disconnects > 0): ?>
+                                            <span class="evidence-badge evidence-warning"><?= $disconnects ?> disconnect(s)</span>
+                                        <?php endif; ?>
+                                    </summary>
+                                    <div class="evidence-chain-content">
+                                        <div class="evidence-meta">
+                                            <span>Session: <code><?= acp_h(substr((string) ($ev['sessionId'] ?? ''), 0, 16)) ?>...</code></span>
+                                            <span>Chain Hash: <code><?= acp_h(substr((string) ($ev['chainHash'] ?? ''), 0, 16)) ?>...</code></span>
+                                        </div>
+                                        <?php if (!empty($ev['proofPoints'])): ?>
+                                        <table class="evidence-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>Time</th>
+                                                    <th>Status</th>
+                                                    <th>Endpoint</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach (array_slice($ev['proofPoints'], 0, 10) as $point): ?>
+                                                <tr class="evidence-row-<?= acp_h($point['status'] ?? 'unknown') ?>">
+                                                    <td><?= (int) ($point['seq'] ?? 0) ?></td>
+                                                    <td><?= acp_h(date('H:i:s', strtotime((string) ($point['time'] ?? '')))) ?></td>
+                                                    <td><?= acp_h($point['status'] ?? '') ?></td>
+                                                    <td class="mono"><?= acp_h($point['endpoint'] ?: '—') ?></td>
+                                                </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                        <?php if (count($ev['proofPoints']) > 10): ?>
+                                            <div class="evidence-more">... and <?= count($ev['proofPoints']) - 10 ?> more proof points</div>
+                                        <?php endif; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </details>
+                            </span>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <?php if (!empty($buildBadge['evidence'])): ?>

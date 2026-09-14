@@ -206,8 +206,9 @@ public static class ScannerEngine
 	/// The game server as the engine reported it at the moment the scan started. Status is
 	/// "connected", "local", "not-connected" or "unverified"; Address, Name and Map are only
 	/// ever filled for "connected", and Name/Map only from the server's own reply.
+	/// EvidenceChain provides continuous monitoring proof throughout the entire scan.
 	/// </summary>
-	private sealed record ConnectedServer(string Status, string Address, string Name, string Map, string NameSource, GameTraffic.Result Traffic, string LiveVersion, ValveA2S.ServerInfo? A2S = null);
+	private sealed record ConnectedServer(string Status, string Address, string Name, string Map, string NameSource, GameTraffic.Result Traffic, string LiveVersion, ValveA2S.ServerInfo? A2S = null, ServerConnectionMonitor.EvidenceChain? Evidence = null);
 
 	private sealed record HlTarget(Process Process, string Path, string Root, string Hash, string StartTime, int TotalGameProcesses, int ActiveGameProcesses = 1);
 
@@ -722,24 +723,31 @@ public static class ScannerEngine
 				//
 				// It gets its own notes list: List<string> is not safe to append to from two
 				// threads, and the main scan is writing to `notes` throughout.
-				List<string> serverNotes = new List<string>();
-				Task<ConnectedServer> serverLookup = Task.Run(delegate
+			List<string> serverNotes = new List<string>();
+
+			// Start continuous server connection monitoring for anti-cheat evidence.
+			// This runs throughout the entire scan and collects timestamped proof points
+			// to detect disconnection/reconnection cheats and server switching.
+			using var serverMonitor = new ServerConnectionMonitor(target.Process.Id, cancellationToken);
+			serverMonitor.StartMonitoring();
+
+			Task<ConnectedServer> serverLookup = Task.Run(delegate
+			{
+				try
 				{
-					try
-					{
-						return DetectConnectedServer(target, serverNotes, cancellationToken);
-					}
-					catch (OperationCanceledException)
-					{
-						throw;
-					}
-					catch (Exception ex)
-					{
-						serverNotes.Add("Connected-server lookup failed: " + ex.Message);
-						return new ConnectedServer("unverified", "", "", "", "",
-							new GameTraffic.Result("unverified", "", 0, 0, 0, Array.Empty<int>(), "lookup failed: " + ex.Message, DateTimeOffset.UtcNow), "");
-					}
-				});
+					return DetectConnectedServer(target, serverNotes, cancellationToken);
+				}
+				catch (OperationCanceledException)
+				{
+					throw;
+				}
+				catch (Exception ex)
+				{
+					serverNotes.Add("Connected-server lookup failed: " + ex.Message);
+					return new ConnectedServer("unverified", "", "", "", "",
+						new GameTraffic.Result("unverified", "", 0, 0, 0, Array.Empty<int>(), "lookup failed: " + ex.Message, DateTimeOffset.UtcNow), "");
+				}
+			});
 
 				Stage("Scanning hl.exe process...");
 				ScanGameProcess(database.RootElement, target, processes, modules, findings, findingKeys, notes);
@@ -782,13 +790,39 @@ public static class ScannerEngine
 				LiveBehaviorResult liveBehaviorResult = await ScanLiveBehaviorAsync(database.RootElement, target, liveBehavior, findings, findingKeys, notes, cancellationToken);
 				Stage("Running ACS evidence engine...");
 
-				// What this client actually is, read from the files the process has mapped
-				// rather than guessed from their names. See EngineIdentity for why the old
-				// answer reported a non-Steam install as genuine Steam. Established before the
-				// evidence rules run, because whether a patched engine is expected depends on it.
-				// The server lookup started with the scan and is long finished by now; its engine
-				// read also carries the live version string.
-				ConnectedServer serverInfo = serverLookup.GetAwaiter().GetResult();
+			// What this client actually is, read from the files the process has mapped
+			// rather than guessed from their names. See EngineIdentity for why the old
+			// answer reported a non-Steam install as genuine Steam. Established before the
+			// evidence rules run, because whether a patched engine is expected depends on it.
+			// The server lookup started with the scan and is long finished by now; its engine
+			// read also carries the live version string.
+			ConnectedServer serverInfoBase = serverLookup.GetAwaiter().GetResult();
+
+			// Finalize the continuous server connection monitor and attach evidence chain.
+			// This provides cryptographic proof of connection state throughout the entire scan,
+			// detecting disconnection/reconnection cheats and server switching.
+			var serverEvidence = serverMonitor.StopAndFinalize();
+			ConnectedServer serverInfo = serverInfoBase with { Evidence = serverEvidence };
+
+			// Add evidence-based findings for anti-cheat
+			if (serverEvidence.FinalStatus == "disconnected-during-scan")
+			{
+				AddEngineFinding(findings, findingKeys, "acp-server-disconnect-during-scan",
+					"Server connection lost during scan", "WARNING", "environment", "server-connection",
+					$"Disconnected {serverEvidence.DisconnectionEvents} time(s)",
+					"The player was connected to a server but disconnected during the scan. " +
+					"This may indicate an attempt to hide the actual server or manipulate scan results.",
+					target.StartTime);
+			}
+			else if (!serverEvidence.ConsistentConnection && serverEvidence.FinalStatus == "connected")
+			{
+				AddEngineFinding(findings, findingKeys, "acp-server-switch-during-scan",
+					"Server changed during scan", "WARNING", "environment", "server-connection",
+					$"Connection inconsistencies detected",
+					"The server connection changed or was unstable during the scan. " +
+					"This may indicate an attempt to manipulate scan results.",
+					target.StartTime);
+			}
 				EngineIdentity.Result engineIdentity = EngineIdentity.Inspect(target.Path, target.Root, modules, serverInfo.LiveVersion);
 				RunAcpEvidenceEngine(target, modules, hlFiles, findings, findingKeys, engineIdentity.NonSteamDistribution);
 				string renderMode = DetectRenderMode(modules);
@@ -923,35 +957,58 @@ public static class ScannerEngine
 					["localTime"] = DateTimeOffset.Now.ToString("O"),
 					["utcOffsetMinutes"] = (int)TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.Now).TotalMinutes,
 					["timeZoneName"] = TimeZoneInfo.Local.DisplayName,
-					["serverAddress"] = serverInfo.Address,
-					["serverName"] = serverInfo.Name,
-					["serverMap"] = serverInfo.Map,
-					["serverDetection"] = new Dictionary<string, object?>
-					{
-						["status"] = serverInfo.Status,
+				["serverAddress"] = serverInfo.Address,
+				["serverName"] = serverInfo.Name,
+				["serverMap"] = serverInfo.Map,
+				["serverDetection"] = new Dictionary<string, object?>
+				{
+					["status"] = serverInfo.Status,
 
-						["address"] = serverInfo.Address,
-						["name"] = serverInfo.Name,
-						["map"] = serverInfo.Map,
-						["nameSource"] = serverInfo.NameSource,
-						["capturedAt"] = serverInfo.Traffic.CapturedAt.ToString("O"),
-						["method"] = "zero-privilege Valve A2S server query",
-						["packetsSent"] = serverInfo.Traffic.Sent,
-						["packetsReceived"] = serverInfo.Traffic.Received,
-						["sampleMs"] = serverInfo.Traffic.SampleMilliseconds,
-						["gameUdpPorts"] = serverInfo.Traffic.LocalPorts.ToArray(),
-						["reason"] = serverInfo.Traffic.Reason,
-						["folder"] = serverInfo.A2S?.Folder ?? "",
-						["game"] = serverInfo.A2S?.Game ?? "",
-						["players"] = serverInfo.A2S?.Players ?? 0,
-						["maxPlayers"] = serverInfo.A2S?.MaxPlayers ?? 0,
-						["bots"] = serverInfo.A2S?.Bots ?? 0,
-						["serverType"] = serverInfo.A2S?.ServerType ?? "",
-						["environment"] = serverInfo.A2S?.Environment ?? "",
-						["vac"] = serverInfo.A2S?.VacSecured ?? false,
-						["protocol"] = serverInfo.A2S?.Protocol ?? 0,
-						["version"] = serverInfo.A2S?.Version ?? ""
-					},
+					["address"] = serverInfo.Address,
+					["name"] = serverInfo.Name,
+					["map"] = serverInfo.Map,
+					["nameSource"] = serverInfo.NameSource,
+					["capturedAt"] = serverInfo.Traffic.CapturedAt.ToString("O"),
+					["method"] = "operating-system UDP endpoint (authoritative) with Valve A2S_INFO and continuous monitoring",
+					["packetsSent"] = serverInfo.Traffic.Sent,
+					["packetsReceived"] = serverInfo.Traffic.Received,
+					["sampleMs"] = serverInfo.Traffic.SampleMilliseconds,
+					["gameUdpPorts"] = serverInfo.Traffic.LocalPorts.ToArray(),
+					["reason"] = serverInfo.Traffic.Reason,
+					["folder"] = serverInfo.A2S?.Folder ?? "",
+					["game"] = serverInfo.A2S?.Game ?? "",
+					["players"] = serverInfo.A2S?.Players ?? 0,
+					["maxPlayers"] = serverInfo.A2S?.MaxPlayers ?? 0,
+					["bots"] = serverInfo.A2S?.Bots ?? 0,
+					["serverType"] = serverInfo.A2S?.ServerType ?? "",
+					["environment"] = serverInfo.A2S?.Environment ?? "",
+					["vac"] = serverInfo.A2S?.VacSecured ?? false,
+					["protocol"] = serverInfo.A2S?.Protocol ?? 0,
+					["version"] = serverInfo.A2S?.Version ?? "",
+					// Continuous monitoring evidence for anti-cheat verification
+					["evidenceChain"] = serverInfo.Evidence is not null ? new Dictionary<string, object?>
+					{
+						["sessionId"] = serverInfo.Evidence.SessionId,
+						["scanStarted"] = serverInfo.Evidence.ScanStarted.ToString("O"),
+						["scanFinished"] = serverInfo.Evidence.ScanFinished.ToString("O"),
+						["chainHash"] = serverInfo.Evidence.ChainHash,
+						["finalStatus"] = serverInfo.Evidence.FinalStatus,
+						["consistentConnection"] = serverInfo.Evidence.ConsistentConnection,
+						["disconnectionEvents"] = serverInfo.Evidence.DisconnectionEvents,
+						["proofPointCount"] = serverInfo.Evidence.ProofPoints.Count,
+						["proofPoints"] = serverInfo.Evidence.ProofPoints.Select(p => new Dictionary<string, object?>
+						{
+							["seq"] = p.SequenceNumber,
+							["time"] = p.Timestamp.ToString("O"),
+							["status"] = p.Status,
+							["endpoint"] = p.Endpoint,
+							["serverName"] = p.ServerName,
+							["serverMap"] = p.ServerMap,
+							["players"] = p.PlayersOnServer,
+							["reason"] = p.Reason
+						}).ToArray()
+					} : null
+				},
 					["gameRoot"] = target.Root,
 					["steamPath"] = ReadSteamPath() ?? "",
 					["configPath"] = FindConfigPath(target.Root) ?? "",

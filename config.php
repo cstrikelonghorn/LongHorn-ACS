@@ -1112,7 +1112,11 @@ function acp_engine_badge(array $engine): array
  * never a value filled in from anywhere else. Reports from older app builds, which found the
  * server by searching memory for address text, are shown with that caveat.
  *
- * Returns ['status', 'name', 'address', 'map', 'note', 'verified'].
+ * Enhanced with continuous monitoring evidence chain for anti-cheat verification.
+ * The evidence chain contains timestamped proof points throughout the entire scan,
+ * detecting disconnection/reconnection cheats and server switching.
+ *
+ * Returns ['status', 'name', 'address', 'map', 'note', 'verified', 'evidence', 'warnings'].
  */
 function acs_server_view(array $report): array
 {
@@ -1121,6 +1125,30 @@ function acs_server_view(array $report): array
     if ($detection !== null) {
         $status = (string) ($detection['status'] ?? '');
         $capturedAt = (string) ($detection['capturedAt'] ?? '');
+        $evidence = is_array($detection['evidenceChain'] ?? null) ? $detection['evidenceChain'] : null;
+
+        // Extract evidence-based warnings
+        $warnings = [];
+        $evidenceNote = '';
+        if ($evidence !== null) {
+            $finalStatus = (string) ($evidence['finalStatus'] ?? '');
+            $consistent = (bool) ($evidence['consistentConnection'] ?? true);
+            $disconnects = (int) ($evidence['disconnectionEvents'] ?? 0);
+            $proofCount = (int) ($evidence['proofPointCount'] ?? 0);
+
+            if ($finalStatus === 'disconnected-during-scan') {
+                $warnings[] = 'Disconnected during scan';
+                $evidenceNote = ' ⚠️ Player disconnected during scan';
+            } elseif (!$consistent && $status === 'connected') {
+                $warnings[] = 'Connection unstable';
+                $evidenceNote = ' ⚠️ Connection changed during scan';
+            }
+
+            if ($proofCount > 0) {
+                $evidenceNote .= " ({$proofCount} proof points)";
+            }
+        }
+
         switch ($status) {
             case 'connected':
                 // The proof, when the app recorded it: live packets exchanged with exactly this
@@ -1136,25 +1164,30 @@ function acs_server_view(array $report): array
                     'name' => trim((string) ($detection['name'] ?? '')) ?: 'Name not reported by server',
                     'address' => (string) ($detection['address'] ?? ''),
                     'map' => trim((string) ($detection['map'] ?? '')) ?: 'Map not reported by server',
-                    'note' => 'Joined at scan time' . $traffic,
+                    'note' => 'Joined at scan time' . $traffic . $evidenceNote,
                     'verified' => true,
+                    'evidence' => $evidence,
+                    'warnings' => $warnings,
                 ];
             case 'local':
                 return ['status' => 'local', 'name' => 'Local game on this PC', 'address' => '', 'map' => '—',
-                        'note' => 'Hosted on the player\'s own PC', 'verified' => true];
+                        'note' => 'Hosted on the player\'s own PC', 'verified' => true,
+                        'evidence' => $evidence, 'warnings' => $warnings];
             case 'not-connected':
                 return ['status' => 'not-connected', 'name' => 'No Server Detected', 'address' => '', 'map' => 'No Server Detected',
-                        'note' => 'Game open, not joined to a server at scan time', 'verified' => true];
+                        'note' => 'Game open, not joined to a server at scan time' . $evidenceNote, 'verified' => true,
+                        'evidence' => $evidence, 'warnings' => $warnings];
             default:
                 return ['status' => 'unverified', 'name' => 'Not verified', 'address' => '', 'map' => 'Not verified',
-                        'note' => (string) ($detection['reason'] ?? 'the game connection could not be read'), 'verified' => false];
+                        'note' => (string) ($detection['reason'] ?? 'the game connection could not be read') . $evidenceNote,
+                        'verified' => false, 'evidence' => $evidence, 'warnings' => $warnings];
         }
     }
 
     $address = trim((string) ($report['serverAddress'] ?? ''));
     if ($address === '') {
         return ['status' => 'not-connected', 'name' => 'No Server Detected', 'address' => '', 'map' => 'No Server Detected',
-                'note' => 'Older app build — not verified', 'verified' => false];
+                'note' => 'Older app build — not verified', 'verified' => false, 'evidence' => null, 'warnings' => []];
     }
     return [
         'status' => 'connected',
@@ -1163,6 +1196,8 @@ function acs_server_view(array $report): array
         'map' => trim((string) ($report['serverMap'] ?? '')) ?: '—',
         'note' => 'Older app build — not verified',
         'verified' => false,
+        'evidence' => null,
+        'warnings' => [],
     ];
 }
 
@@ -2300,4 +2335,136 @@ function acp_report_status_counts(array $config): array
     }
 
     return $stats;
+}
+
+/**
+ * Query a Source/GoldSrc server via A2S_INFO.
+ *
+ * Returns server info array or null on failure.
+ * Used for server-side verification of reported server connections.
+ */
+function acp_query_a2s(string $address): ?array
+{
+    $parts = explode(':', $address);
+    if (count($parts) !== 2) {
+        return null;
+    }
+
+    [$host, $port] = $parts;
+    $port = (int) $port;
+    if ($port <= 0 || $port > 65535) {
+        return null;
+    }
+
+    $socket = @fsockopen("udp://{$host}", $port, $errno, $errstr, 2);
+    if (!$socket) {
+        return null;
+    }
+
+    stream_set_timeout($socket, 2);
+
+    // A2S_INFO request: 0xFF 0xFF 0xFF 0xFF 'T' "Source Engine Query\0"
+    $request = "\xFF\xFF\xFF\xFFTSource Engine Query\0";
+
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        fwrite($socket, $request);
+        $response = fread($socket, 4096);
+
+        if ($response === false || strlen($response) < 6) {
+            fclose($socket);
+            return null;
+        }
+
+        // Check for split packet (0xFE) — not handling multi-packet responses
+        if (substr($response, 0, 4) === "\xFF\xFF\xFF\xFE") {
+            fclose($socket);
+            return null;
+        }
+
+        if (substr($response, 0, 4) !== "\xFF\xFF\xFF\xFF") {
+            fclose($socket);
+            return null;
+        }
+
+        $type = $response[4];
+
+        // Challenge response: resend with challenge number
+        if ($type === "\x41" && strlen($response) >= 9) {
+            $challenge = substr($response, 5, 4);
+            $request = "\xFF\xFF\xFF\xFFTSource Engine Query\0" . $challenge;
+            continue;
+        }
+
+        // Source A2S_INFO response ('I')
+        if ($type === "\x49") {
+            $offset = 6; // skip header + type + protocol
+            $name = acp_a2s_read_string($response, $offset);
+            $map = acp_a2s_read_string($response, $offset);
+            $folder = acp_a2s_read_string($response, $offset);
+            $game = acp_a2s_read_string($response, $offset);
+
+            // Skip ID (2 bytes)
+            $offset += 2;
+
+            $players = $offset < strlen($response) ? ord($response[$offset++]) : 0;
+            $maxPlayers = $offset < strlen($response) ? ord($response[$offset++]) : 0;
+            $bots = $offset < strlen($response) ? ord($response[$offset++]) : 0;
+
+            fclose($socket);
+            return [
+                'name' => $name,
+                'map' => $map,
+                'folder' => $folder,
+                'game' => $game,
+                'players' => $players,
+                'maxPlayers' => $maxPlayers,
+                'bots' => $bots,
+            ];
+        }
+
+        // GoldSrc legacy response ('m')
+        if ($type === "\x6D") {
+            $offset = 5; // skip header + type
+            acp_a2s_read_string($response, $offset); // skip address string
+            $name = acp_a2s_read_string($response, $offset);
+            $map = acp_a2s_read_string($response, $offset);
+            $folder = acp_a2s_read_string($response, $offset);
+            $game = acp_a2s_read_string($response, $offset);
+
+            $players = $offset < strlen($response) ? ord($response[$offset++]) : 0;
+            $maxPlayers = $offset < strlen($response) ? ord($response[$offset++]) : 0;
+
+            fclose($socket);
+            return [
+                'name' => $name,
+                'map' => $map,
+                'folder' => $folder,
+                'game' => $game,
+                'players' => $players,
+                'maxPlayers' => $maxPlayers,
+                'bots' => 0,
+            ];
+        }
+
+        fclose($socket);
+        return null;
+    }
+
+    fclose($socket);
+    return null;
+}
+
+/** Read a null-terminated string from binary data. */
+function acp_a2s_read_string(string $data, int &$offset): string
+{
+    $start = $offset;
+    $len = strlen($data);
+    while ($offset < $len && $data[$offset] !== "\0") {
+        $offset++;
+    }
+    $result = substr($data, $start, $offset - $start);
+    if ($offset < $len) {
+        $offset++; // Skip null terminator
+    }
+    return $result;
 }

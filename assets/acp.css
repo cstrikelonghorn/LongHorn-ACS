@@ -1673,6 +1673,129 @@ html[data-uds-theme] .dim-text {
     font-style: italic;
 }
 
+/* ------------------------------------------- server connection evidence chain */
+html[data-uds-theme] .srv-warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+html[data-uds-theme] .srv-warning-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--warn) 20%, transparent);
+    color: var(--warn);
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
+html[data-uds-theme] .evidence-chain-details {
+    margin-top: 4px;
+}
+
+html[data-uds-theme] .evidence-chain-details summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+}
+
+html[data-uds-theme] .evidence-chain-details summary::-webkit-details-marker {
+    display: none;
+}
+
+html[data-uds-theme] .evidence-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    border-radius: 12px;
+    gap: 4px;
+}
+
+html[data-uds-theme] .evidence-badge.evidence-ok {
+    background: color-mix(in srgb, var(--ok) 15%, transparent);
+    color: var(--ok);
+    border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+}
+
+html[data-uds-theme] .evidence-badge.evidence-warning {
+    background: color-mix(in srgb, var(--warn) 15%, transparent);
+    color: var(--warn);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
+html[data-uds-theme] .evidence-chain-content {
+    margin-top: 10px;
+    padding: 12px;
+    background: var(--bg-3);
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+}
+
+html[data-uds-theme] .evidence-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+html[data-uds-theme] .evidence-meta code {
+    background: var(--bg-2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    color: var(--accent);
+}
+
+html[data-uds-theme] .evidence-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+html[data-uds-theme] .evidence-table th,
+html[data-uds-theme] .evidence-table td {
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+}
+
+html[data-uds-theme] .evidence-table th {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+html[data-uds-theme] .evidence-row-connected td {
+    color: var(--ok);
+}
+
+html[data-uds-theme] .evidence-row-not-connected td {
+    color: var(--muted);
+}
+
+html[data-uds-theme] .evidence-row-unverified td {
+    color: var(--warn);
+}
+
+html[data-uds-theme] .evidence-more {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    font-style: italic;
+}
+
 /* ------------------------------------------- confirmed detections threat card */
 html[data-uds-theme] .detected-threat-card {
     position: relative;

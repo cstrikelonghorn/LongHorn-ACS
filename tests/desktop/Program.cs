@@ -385,6 +385,28 @@ internal static class Checks
             Check(!GameTraffic.UdpPortsOf(selfPid + 1_000_000).Contains(own), "ports are attributed to their owning process only");
         }
 
+        // The authoritative connected-peer read: the OS UDP endpoint table must expose the
+        // exact remote server a connected socket is talking to (the data netstat prints).
+        // This is what lets the scanner report the true server rather than guessing from memory.
+        using (var connected = new System.Net.Sockets.UdpClient())
+        {
+            connected.Connect("8.8.8.8", 53);
+            System.Threading.Thread.Sleep(200);
+            var selfPid = Process.GetCurrentProcess().Id;
+            var peers = GameTraffic.ConnectedUdpPeersOf(selfPid);
+            Check(peers.Any(p => p.RemoteAddress.ToString() == "8.8.8.8" && p.RemotePort == 53),
+                "connected UDP peer exposes the exact remote server IP:port");
+            Check(GameTraffic.ConnectedUdpPeersOf(selfPid + 1_000_000).Count == 0,
+                "connected peers are attributed to their owning process only");
+        }
+
+        // After the socket above is closed, the same process must read as not connected.
+        {
+            var afterClose = GameTraffic.Capture(Process.GetCurrentProcess().Id, CancellationToken.None, 300);
+            Check(afterClose.Status == "not-connected",
+                "a process with no connected UDP socket is No Server Detected");
+        }
+
         if (!GameTraffic.IsElevated())
         {
             var capture = GameTraffic.Capture(Process.GetCurrentProcess().Id, CancellationToken.None, 300);

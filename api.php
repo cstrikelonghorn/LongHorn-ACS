@@ -272,6 +272,164 @@ try {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // Server Connection Verification API
+    // ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Verify a server connection claim by querying the server via A2S_INFO.
+     * This provides independent server-side verification that the claimed server
+     * actually exists and is reachable, helping detect fake server claims.
+     *
+     * GET api.php?action=verify_server&address=ip:port
+     *
+     * Returns server info if reachable, error otherwise.
+     */
+    if ($action === 'verify_server') {
+        acs_require_rate_limit('verify_server', 30, 60, $acpConfig);
+
+        $address = trim((string) ($_GET['address'] ?? ''));
+        if ($address === '' || !preg_match('/^[0-9a-zA-Z\.\-]+:[0-9]+$/', $address)) {
+            acp_json_response(['ok' => false, 'error' => 'Invalid server address format (expected ip:port)'], 400);
+        }
+
+        // Validate port range
+        $port = (int) substr($address, strrpos($address, ':') + 1);
+        if ($port < 1024 || $port > 65535) {
+            acp_json_response(['ok' => false, 'error' => 'Invalid port number'], 400);
+        }
+
+        $serverInfo = acp_query_a2s($address);
+
+        if ($serverInfo === null) {
+            acp_json_response([
+                'ok' => false,
+                'address' => $address,
+                'error' => 'Server did not respond to A2S_INFO query',
+                'reachable' => false,
+            ], 404);
+        }
+
+        acp_json_response([
+            'ok' => true,
+            'address' => $address,
+            'reachable' => true,
+            'server' => $serverInfo,
+            'verifiedAt' => gmdate('Y-m-d\TH:i:s\Z'),
+        ]);
+    }
+
+    /**
+     * Verify a report's server connection evidence chain.
+     * Checks that the evidence chain is internally consistent and optionally
+     * verifies the server is still reachable.
+     *
+     * GET api.php?action=verify_report_server&id=report_id
+     */
+    if ($action === 'verify_report_server') {
+        acs_require_rate_limit('verify_report_server', 20, 60, $acpConfig);
+
+        $reportId = trim((string) ($_GET['id'] ?? ''));
+        if ($reportId === '' || !preg_match('/^[0-9a-f]{16}$/', $reportId)) {
+            acp_json_response(['ok' => false, 'error' => 'Invalid report ID'], 400);
+        }
+
+        $path = acp_report_path($acpConfig, $reportId);
+        if (!is_file($path)) {
+            acp_json_response(['ok' => false, 'error' => 'Report not found'], 404);
+        }
+
+        $report = json_decode((string) file_get_contents($path), true);
+        if (!is_array($report)) {
+            acp_json_response(['ok' => false, 'error' => 'Invalid report data'], 500);
+        }
+
+        $detection = is_array($report['serverDetection'] ?? null) ? $report['serverDetection'] : null;
+        $evidence = is_array($detection['evidenceChain'] ?? null) ? $detection['evidenceChain'] : null;
+
+        $result = [
+            'ok' => true,
+            'reportId' => $reportId,
+            'hasEvidenceChain' => $evidence !== null,
+            'serverAddress' => (string) ($report['serverAddress'] ?? ''),
+            'serverName' => (string) ($report['serverName'] ?? ''),
+            'verification' => [
+                'status' => 'unknown',
+                'checks' => [],
+            ],
+        ];
+
+        // Check 1: Evidence chain exists and is valid
+        if ($evidence !== null) {
+            $proofPoints = is_array($evidence['proofPoints'] ?? null) ? $evidence['proofPoints'] : [];
+            $result['verification']['checks'][] = [
+                'name' => 'Evidence chain present',
+                'passed' => true,
+                'detail' => count($proofPoints) . ' proof points recorded',
+            ];
+
+            // Check 2: Chain hash verification
+            $chainHash = (string) ($evidence['chainHash'] ?? '');
+            if ($chainHash !== '') {
+                $result['verification']['checks'][] = [
+                    'name' => 'Chain hash present',
+                    'passed' => true,
+                    'detail' => substr($chainHash, 0, 16) . '...',
+                ];
+            }
+
+            // Check 3: Connection consistency
+            $consistent = (bool) ($evidence['consistentConnection'] ?? true);
+            $disconnects = (int) ($evidence['disconnectionEvents'] ?? 0);
+            $result['verification']['checks'][] = [
+                'name' => 'Connection consistency',
+                'passed' => $consistent && $disconnects === 0,
+                'detail' => $consistent ? 'Stable connection throughout scan' : "Unstable: {$disconnects} disconnection(s)",
+            ];
+
+            // Check 4: Final status
+            $finalStatus = (string) ($evidence['finalStatus'] ?? '');
+            $result['verification']['checks'][] = [
+                'name' => 'Final connection status',
+                'passed' => $finalStatus === 'connected',
+                'detail' => $finalStatus,
+            ];
+
+            $result['verification']['status'] = $consistent && $disconnects === 0 && $finalStatus === 'connected'
+                ? 'verified' : 'suspicious';
+        } else {
+            $result['verification']['checks'][] = [
+                'name' => 'Evidence chain present',
+                'passed' => false,
+                'detail' => 'No continuous monitoring evidence (older scanner version)',
+            ];
+            $result['verification']['status'] = 'legacy';
+        }
+
+        // Check 5: Server still reachable (optional live verification)
+        $serverAddress = (string) ($report['serverAddress'] ?? '');
+        if ($serverAddress !== '') {
+            $liveCheck = acp_query_a2s($serverAddress);
+            $result['verification']['liveServerCheck'] = $liveCheck !== null ? [
+                'reachable' => true,
+                'name' => $liveCheck['name'] ?? '',
+                'map' => $liveCheck['map'] ?? '',
+                'players' => $liveCheck['players'] ?? 0,
+            ] : ['reachable' => false];
+
+            if ($liveCheck !== null) {
+                $nameMatch = strcasecmp(trim($liveCheck['name'] ?? ''), trim($result['serverName'])) === 0;
+                $result['verification']['checks'][] = [
+                    'name' => 'Live server verification',
+                    'passed' => $nameMatch,
+                    'detail' => $nameMatch ? 'Server name matches report' : 'Server name differs from report',
+                ];
+            }
+        }
+
+        acp_json_response($result);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Admin Cheats Manager API
     // ────────────────────────────────────────────────────────────────────────
 
