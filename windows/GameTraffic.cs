@@ -312,8 +312,8 @@ public static class GameTraffic
         var fragmentOffset = ((packet[6] & 0x1F) << 8) | packet[7];
         if (fragmentOffset != 0) return false;
 
-        source = new IPAddress(packet.Slice(12, 4));
-        destination = new IPAddress(packet.Slice(16, 4));
+        source = new IPAddress(packet.Slice(12, 4).ToArray());
+        destination = new IPAddress(packet.Slice(16, 4).ToArray());
         sourcePort = (packet[headerLength] << 8) | packet[headerLength + 1];
         destinationPort = (packet[headerLength + 2] << 8) | packet[headerLength + 3];
         return true;

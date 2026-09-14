@@ -864,7 +864,7 @@ public static class ScannerEngine
 					["scannerBuild"] = ScannerBuild.Value,
 					["scanStages"] = stages.ToArray(),
 					["scanMode"] = "on-demand",
-					["databaseRevision"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(databaseJson))).ToLowerInvariant(),
+					["databaseRevision"] = CryptoUtils.Sha256Hex(Encoding.UTF8.GetBytes(databaseJson)),
 					["databaseFetchedAt"] = databaseFetchedAt.ToString("O"),
 					["createdAt"] = DateTimeOffset.UtcNow.ToString("O"),
 					["scanStartedAt"] = scanStartedAt.ToString("O"),
@@ -1098,7 +1098,7 @@ public static class ScannerEngine
 		(Process Proc, string? Path, FileHashes Hashes, long Bytes, int Id, string? Note)[] results = new(Process, string, FileHashes, long, int, string)[running.Length];
 		Parallel.For(0, running.Length, new ParallelOptions
 		{
-			MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 2),
+			MaxDegreeOfParallelism = MathUtils.Clamp(Environment.ProcessorCount / 2, 1, 2),
 			CancellationToken = _scanToken
 		}, delegate(int i)
 		{
@@ -1213,7 +1213,7 @@ public static class ScannerEngine
 				(string Name, string Display, string Path, FileHashes Hash, FileMetadata Meta)[] results = new(string, string, string, FileHashes, FileMetadata)[candidates.Length];
 				Parallel.For(0, candidates.Length, new ParallelOptions
 				{
-					MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 2),
+					MaxDegreeOfParallelism = MathUtils.Clamp(Environment.ProcessorCount / 2, 1, 2),
 					CancellationToken = _scanToken
 				}, delegate(int i)
 				{
@@ -1343,7 +1343,7 @@ public static class ScannerEngine
 			string value2 = ProtectionName(mbi.Protect);
 			string value3 = MemoryTypeName(mbi.Type);
 			string text = $"0x{((IntPtr)mbi.BaseAddress).ToInt64():X} {value3} {value2}";
-			string surface = $"{text} {fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {string.Join(' ', value)}";
+			string surface = $"{text} {fileHashes.Sha256} {fileHashes.Sha1} {fileHashes.Md5} {string.Join(" ", value)}";
 			memoryArtifacts.Add(new Dictionary<string, object>
 			{
 				["baseAddress"] = $"0x{((IntPtr)mbi.BaseAddress).ToInt64():X}",
@@ -1599,12 +1599,12 @@ public static class ScannerEngine
 			(string Rel, string Path, FileHashes Hash, FileMetadata Meta, long Len)[] results = new(string, string, FileHashes, FileMetadata, long)[candidates.Length];
 			Parallel.For(0, candidates.Length, new ParallelOptions
 			{
-				MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 1, 2),
+				MaxDegreeOfParallelism = MathUtils.Clamp(Environment.ProcessorCount / 2, 1, 2),
 				CancellationToken = _scanToken
 			}, delegate(int num3)
 			{
 				string file = candidates[num3];
-				results[num3] = (Rel: Path.GetRelativePath(root, file), Path: file, Hash: ShouldHashHlFile(file) ? TryFileHashes(file) : FileHashes.Empty, Meta: ShouldReadMetadata(file) ? ReadFileMetadata(file) : FileMetadata.Empty, Len: Safe(() => new FileInfo(file).Length));
+				results[num3] = (Rel: PathUtils.GetRelativePath(root, file), Path: file, Hash: ShouldHashHlFile(file) ? TryFileHashes(file) : FileHashes.Empty, Meta: ShouldReadMetadata(file) ? ReadFileMetadata(file) : FileMetadata.Empty, Len: Safe(() => new FileInfo(file).Length));
 			});
 			(string, string, FileHashes, FileMetadata, long)[] array2 = results;
 			for (int num = 0; num < array2.Length; num++)
@@ -1688,7 +1688,7 @@ public static class ScannerEngine
 					}
 					continue;
 					IL_01de:
-					string relativePath = Path.GetRelativePath(directoryName, file);
+					string relativePath = PathUtils.GetRelativePath(directoryName, file);
 					dictionary[relativePath] = text2;
 					MatchRules(database, "hl-config", relativePath + "\n" + text2, relativePath, findings, findingKeys, Safe(() => File.GetLastWriteTimeUtc(file).ToString("O")) ?? "");
 				}
@@ -2165,7 +2165,7 @@ public static class ScannerEngine
 		if (!result.Valid || result.Frames < 250)
 		{
 			list.Add("[INFO] Demo too short or invalid for AIM/TRIGGER behavioral verdict.");
-			return string.Join('\n', list);
+			return string.Join("\n", list);
 		}
 		double num = ((result.AttackSnapFrames > 0) ? (result.AttackSnapDeltaTotal / (double)result.AttackSnapFrames) : 0.0);
 		double num2 = ((result.AttackPresses > 0) ? ((double)result.MicroAngleAttackPresses / (double)result.AttackPresses) : 0.0);
@@ -2199,7 +2199,7 @@ public static class ScannerEngine
 		{
 			list.Add("[WARNING] [SGS SCRIPT TYPE 1. Integrated ACS demo behavior: repeated jump+strafe movement pattern]");
 		}
-		return string.Join('\n', list);
+		return string.Join("\n", list);
 	}
 
 	private static string BuildLiveBehaviorOutput(LiveBehaviorResult result)
@@ -2212,10 +2212,10 @@ public static class ScannerEngine
 		if (result.ActiveSamples < 120)
 		{
 			list.Add("[INFO] Not enough in-game foreground samples for AIM/TRIGGER behavior verdict.");
-			return string.Join('\n', list);
+			return string.Join("\n", list);
 		}
 		list.Add($"[INFO] Cursor-derived ratios (not a verdict): lowMove={value2:P0} snap={value3:P0} jumpStrafe={value4:P0}");
-		return string.Join('\n', list);
+		return string.Join("\n", list);
 	}
 
 	private static void AddLiveBehaviorFindings(LiveBehaviorResult result, List<Dictionary<string, object?>> findings, HashSet<string> findingKeys, string time)
@@ -3457,7 +3457,7 @@ public static class ScannerEngine
 		sHA2.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
 		mD.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
 		num ^= 0xFFFFFFFFu;
-		return new FileHashes(Convert.ToHexString(sHA.Hash ?? Array.Empty<byte>()).ToLowerInvariant(), Convert.ToHexString(sHA2.Hash ?? Array.Empty<byte>()).ToLowerInvariant(), Convert.ToHexString(mD.Hash ?? Array.Empty<byte>()).ToLowerInvariant(), num.ToString("x8"));
+		return new FileHashes(CryptoUtils.ToHex(sHA.Hash), CryptoUtils.ToHex(sHA2.Hash), CryptoUtils.ToHex(mD.Hash), num.ToString("x8"));
 	}
 
 	private static void SetHashCache(string key, FileHashes hashes)
@@ -3484,7 +3484,7 @@ public static class ScannerEngine
 			byte b = (byte)(num ^ bytes[i]);
 			num = (num >> 8) ^ Crc32Table[b];
 		}
-		return new FileHashes(Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(), Convert.ToHexString(SHA1.HashData(bytes)).ToLowerInvariant(), Convert.ToHexString(MD5.HashData(bytes)).ToLowerInvariant(), (num ^ 0xFFFFFFFFu).ToString("x8"));
+		return new FileHashes(CryptoUtils.Sha256Hex(bytes), CryptoUtils.Sha1Hex(bytes), CryptoUtils.Md5Hex(bytes), (num ^ 0xFFFFFFFFu).ToString("x8"));
 	}
 
 	private static IEnumerable<string> ExtractAsciiStrings(byte[] bytes, int minLength, int limit)
@@ -3721,14 +3721,7 @@ public static class ScannerEngine
 		};
 		foreach (string root in roots.Where((string r) => !string.IsNullOrWhiteSpace(r)))
 		{
-			InlineArray6<string> buffer = default(InlineArray6<string>);
-			buffer[0] = root;
-			buffer[1] = "Steam";
-			buffer[2] = "steamapps";
-			buffer[3] = "common";
-			buffer[4] = "Half-Life";
-			buffer[5] = "hl.exe";
-			yield return Path.Combine(buffer);
+			yield return Path.Combine(root, "Steam", "steamapps", "common", "Half-Life", "hl.exe");
 			yield return Path.Combine(root, "Half-Life", "hl.exe");
 			yield return Path.Combine(root, "Counter-Strike 1.6", "hl.exe");
 		}
@@ -3760,7 +3753,7 @@ public static class ScannerEngine
 	{
 		try
 		{
-			return Path.GetRelativePath(root, path);
+			return PathUtils.GetRelativePath(root, path);
 		}
 		catch
 		{
@@ -4238,13 +4231,13 @@ public static class ScannerEngine
 	private static string StableDeviceFingerprint(string steamId, string hddSerial)
 	{
 		string s = $"{steamId}|{hddSerial}|{Environment.MachineName}";
-		return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s))).Substring(0, 16).ToLowerInvariant();
+		return CryptoUtils.Sha256Hex(Encoding.UTF8.GetBytes(s)).Substring(0, 16);
 	}
 
 	private static string StablePlayerId()
 	{
 		string s = $"{Environment.UserName}|{Environment.MachineName}|{Environment.OSVersion.VersionString}";
-		return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s))).Substring(0, 12).ToLowerInvariant();
+		return CryptoUtils.Sha256Hex(Encoding.UTF8.GetBytes(s)).Substring(0, 12);
 	}
 
 	private static string NormalizeDriverPath(string path)
@@ -4487,13 +4480,13 @@ public static class ScannerEngine
 	{
 		try
 		{
-			string? exe = Environment.ProcessPath;
+			string? exe = Process.GetCurrentProcess().MainModule?.FileName;
 			if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
 			{
 				return "unknown";
 			}
 			using FileStream stream = File.OpenRead(exe);
-			return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()[..12];
+			return CryptoUtils.Sha256Hex(stream).Substring(0, 12);
 		}
 		catch
 		{

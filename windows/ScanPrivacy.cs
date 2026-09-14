@@ -135,7 +135,7 @@ internal sealed class PrivacyForm : Form
         var screen = IsHandleCreated ? Screen.FromControl(this) : Screen.PrimaryScreen;
         var work = screen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         var fit = Math.Min((work.Width - 60f) / (BaseW * dpi), (work.Height - 60f) / (BaseH * dpi));
-        var next = dpi * Math.Clamp(fit, 0.6f, 1f);
+        var next = dpi * MathUtils.Clamp(fit, 0.6f, 1f);
         if (_fTitle is not null && Math.Abs(next - _scale) < 0.001f)
         {
             return;

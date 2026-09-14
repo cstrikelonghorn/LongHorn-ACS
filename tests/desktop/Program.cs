@@ -1,3 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Windows.Forms;
+using ACS;
 using ACPScanner;
 using System.Diagnostics;
 using System.Reflection;
@@ -124,7 +132,8 @@ internal static class Checks
 
         if (args.Length > 0)
         {
-            ApplicationConfiguration.Initialize();
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
             using var form = new MainForm();
             form.ShowInTaskbar = false;
             form.Opacity = 0;
@@ -370,14 +379,15 @@ internal static class Checks
         using (var probe = new System.Net.Sockets.UdpClient(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0)))
         {
             var own = ((System.Net.IPEndPoint)probe.Client.LocalEndPoint!).Port;
-            var listed = GameTraffic.UdpPortsOf(Environment.ProcessId);
+            var selfPid = Process.GetCurrentProcess().Id;
+            var listed = GameTraffic.UdpPortsOf(selfPid);
             Check(listed.Contains(own), $"Windows UDP socket table read correctly (found this process's port {own})");
-            Check(!GameTraffic.UdpPortsOf(Environment.ProcessId + 1_000_000).Contains(own), "ports are attributed to their owning process only");
+            Check(!GameTraffic.UdpPortsOf(selfPid + 1_000_000).Contains(own), "ports are attributed to their owning process only");
         }
 
         if (!GameTraffic.IsElevated())
         {
-            var capture = GameTraffic.Capture(Environment.ProcessId, CancellationToken.None, 300);
+            var capture = GameTraffic.Capture(Process.GetCurrentProcess().Id, CancellationToken.None, 300);
             Check(capture.Status == "not-connected",
                 "without administrator rights user-space detection runs cleanly without elevation");
         }

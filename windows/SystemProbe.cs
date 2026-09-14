@@ -47,7 +47,7 @@ internal static class SystemProbe
             }
 
             var buffer = queried.Value;
-            var selfPid = Environment.ProcessId;
+            var selfPid = Process.GetCurrentProcess().Id;
             var entrySize = IntPtr.Size == 8 ? 40 : 28;
             var count = (long)Marshal.ReadIntPtr(buffer, 0);
             var start = IntPtr.Size == 8 ? 16 : 8;

@@ -372,12 +372,13 @@ public static class EngineIdentity
             }
 
             // Latin-1 maps every byte to one character, so NUL terminators survive for the regexes.
-            var text = Encoding.Latin1.GetString(File.ReadAllBytes(path));
+            var text = Encoding.GetEncoding("ISO-8859-1").GetString(File.ReadAllBytes(path));
 
             var exe = ExeBuildString.Match(text);
             var compiled = exe.Success ? $"{NormalizeDate(exe.Groups[2].Value)} {exe.Groups[1].Value}" : "";
 
             var standalone = StandaloneDate.Matches(text)
+                .Cast<System.Text.RegularExpressions.Match>()
                 .Select(m => m.Groups[1].Value)
                 .Where(IsPlausibleDate)
                 .Distinct()

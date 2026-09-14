@@ -246,7 +246,7 @@ internal static class ModuleIntegrity
             if (path.StartsWith(sys32, StringComparison.OrdinalIgnoreCase))
             {
                 var wow64 = Environment.GetFolderPath(Environment.SpecialFolder.SystemX86);
-                var rel = Path.GetRelativePath(sys32, path);
+                var rel = PathUtils.GetRelativePath(sys32, path);
                 var candidate = Path.Combine(wow64, rel);
                 if (File.Exists(candidate))
                 {
@@ -316,7 +316,7 @@ internal static class ModuleIntegrity
             return "";
         }
 
-        return string.Join(' ', Enumerable.Range(offset, end - offset).Select(i => data[i].ToString("X2")));
+        return string.Join(" ", Enumerable.Range(offset, end - offset).Select(i => data[i].ToString("X2")));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -612,12 +612,14 @@ internal static class ModuleIntegrity
                     if (type == ImageRelBasedHighLow && target + 4 <= image.Length)
                     {
                         var value = BitConverter.ToUInt32(image, (int)target);
-                        BitConverter.TryWriteBytes(image.AsSpan((int)target, 4), (uint)(value + (uint)delta));
+                        var bytes = BitConverter.GetBytes((uint)(value + (uint)delta));
+                        Array.Copy(bytes, 0, image, (int)target, 4);
                     }
                     else if (type == ImageRelBasedDir64 && target + 8 <= image.Length)
                     {
                         var value = BitConverter.ToUInt64(image, (int)target);
-                        BitConverter.TryWriteBytes(image.AsSpan((int)target, 8), (ulong)((long)value + delta));
+                        var bytes = BitConverter.GetBytes((ulong)((long)value + delta));
+                        Array.Copy(bytes, 0, image, (int)target, 8);
                     }
                 }
 

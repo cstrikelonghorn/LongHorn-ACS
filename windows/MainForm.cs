@@ -89,7 +89,7 @@ internal static class AcpTheme
         return path;
     }
 
-    public static Color Fade(Color c, int alpha) => Color.FromArgb(Math.Clamp(alpha, 0, 255), c);
+    public static Color Fade(Color c, int alpha) => Color.FromArgb(MathUtils.Clamp(alpha, 0, 255), c);
 
     /// <summary>
     /// The border of a borderless window: one near-black pixel all the way round, then a
@@ -771,7 +771,7 @@ public sealed class MainForm : Form
         var work = screen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
 
         var fit = Math.Min((work.Width - 60f) / (BaseW * dpi), (work.Height - 60f) / (BaseH * dpi));
-        var next = dpi * Math.Clamp(fit, 0.62f, 1.0f);
+        var next = dpi * MathUtils.Clamp(fit, 0.62f, 1.0f);
         if (_fTitle is not null && Math.Abs(next - _scale) < 0.001f)
         {
             return;
@@ -1273,7 +1273,7 @@ public sealed class MainForm : Form
         // Progress arc: the outermost bright element, so completion reads at a glance.
         if (_progress > 0)
         {
-            var sweep = 360f * Math.Clamp(_progress, 0, 100) / 100f;
+            var sweep = 360f * MathUtils.Clamp(_progress, 0, 100) / 100f;
             var rect = new RectangleF(cx - r * 0.925f, cy - r * 0.925f, r * 1.85f, r * 1.85f);
             using (var halo = new Pen(AcpTheme.Fade(accent, 55), S(7f)) { StartCap = LineCap.Round, EndCap = LineCap.Round })
             {
@@ -1529,7 +1529,7 @@ public sealed class MainForm : Form
         {
             g.FillRectangle(track, bar.X, bar.Y, bar.Width, 1);
         }
-        var fillW = (int)(bar.Width * Math.Clamp(_progress, 0, 100) / 100f);
+        var fillW = (int)(bar.Width * MathUtils.Clamp(_progress, 0, 100) / 100f);
         if (fillW > 0)
         {
             using var fill = new LinearGradientBrush(
@@ -1859,7 +1859,7 @@ public sealed class MainForm : Form
 
     private void SetProgress(int value)
     {
-        _lastProgress = Math.Clamp(value, 0, 100);
+        _lastProgress = MathUtils.Clamp(value, 0, 100);
         _progress = _lastProgress;
         Invalidate();
     }
@@ -2153,7 +2153,7 @@ internal sealed class LogForm : Form
         var screen = IsHandleCreated ? Screen.FromControl(this) : Screen.PrimaryScreen;
         var work = screen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         var fit = Math.Min((work.Width - 60f) / (BaseW * dpi), (work.Height - 60f) / (BaseH * dpi));
-        var next = dpi * Math.Clamp(fit, 0.60f, 1.0f);
+        var next = dpi * MathUtils.Clamp(fit, 0.60f, 1.0f);
         if (_fTitle is not null && Math.Abs(next - _scale) < 0.001f)
         {
             return;
