@@ -1,3 +1,14 @@
+# ACS 1.0.4
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **Evidence Log icon.** The Evidence Log window now shows the ACS icon in the taskbar.
+- **Uploads after an old setup.** A settings file left over from an older setup no longer blocks report uploads.
+
+1.0.3 keeps working; this update is recommended. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.3
 
 **Required update.** Scanner 1.0.2 and older can no longer upload reports; they show an "out of date" message. Download `ACS-Scanner-1.0.3-windows.exe` from this release or from [cslonghorn.com/acs](https://cslonghorn.com/acs/download.php) and scan again.

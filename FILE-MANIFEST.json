@@ -1,10 +1,10 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "files": [
     {
-      "path": "ACS-Scanner-1.0.3-windows.exe",
-      "sha256": "01e5a5a58b0b87f338d19537fa01b89bfa097bf4207a785bc2c6b976baef471f",
-      "bytes": 4081152
+      "path": "ACS-Scanner-1.0.4-windows.exe",
+      "sha256": "2f88381b8804826fa54cbe9b80e2cff8a12b06fe81270fe372743d5c5624db9c",
+      "bytes": 4081664
     },
     {
       "path": "DOTNET-LICENSE.txt",

@@ -8,6 +8,12 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.4] — 2026-09-16
+
+### Fixed
+- The Evidence Log window shows the ACS icon in the taskbar.
+- A settings file left over from an older setup no longer blocks report uploads.
+
 ## [1.0.3] — 2026-09-16
 
 Required update: 1.0.2 and older can no longer upload reports.

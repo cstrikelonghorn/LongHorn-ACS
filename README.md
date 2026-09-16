@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/banner.svg" alt="LongHorn ACS — Anti-Cheat Scanner" width="100%" />
 
-  <a href="https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.3"><img alt="Download 1.0.3" src="https://img.shields.io/badge/1_Download-v1.0.3-ff6a1f?style=for-the-badge&logo=github" /></a>&nbsp;
+  <a href="https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.4"><img alt="Download 1.0.4" src="https://img.shields.io/badge/1_Download-v1.0.4-ff6a1f?style=for-the-badge&logo=github" /></a>&nbsp;
   <a href="#-the-app"><img alt="The App" src="https://img.shields.io/badge/2_The_App-Screenshots-191c22?style=for-the-badge" /></a>&nbsp;
   <a href="#-faq"><img alt="FAQ" src="https://img.shields.io/badge/3_FAQ-Answers-191c22?style=for-the-badge" /></a>&nbsp;
   <a href="https://www.cslonghorn.com"><img alt="Website" src="https://img.shields.io/badge/cslonghorn.com-Website-191c22?style=for-the-badge" /></a>
@@ -9,9 +9,9 @@
   <br/><br/>
 
   ![Windows](https://img.shields.io/badge/Windows-10%2F11_x86%20%2F%20x64-0078D4?style=flat-square&logo=windows&logoColor=white)
-  ![Version](https://img.shields.io/badge/Version-1.0.3-ffb020?style=flat-square)
+  ![Version](https://img.shields.io/badge/Version-1.0.4-ffb020?style=flat-square)
   ![Build](https://img.shields.io/badge/Build-Single_Executable-00c853?style=flat-square)
-  ![Status](https://img.shields.io/badge/Status-Release_1.0.3-ff6a1f?style=flat-square)
+  ![Status](https://img.shields.io/badge/Status-Release_1.0.4-ff6a1f?style=flat-square)
 
   **Evidence-based anti-cheat for Counter-Strike 1.6.**<br/>
   A Windows scanner, a web report dashboard and a ReHLDS server engine —<br/>
@@ -62,19 +62,19 @@ Every scan ends in a written disclosure: the signed report uploads automatically
 
 ## 🚀 Start
 
-1. Download `ACS-Scanner-1.0.3-windows.exe` from the [tagged release](https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.3) and compare its SHA-256 with [`CHECKSUMS.sha256`](CHECKSUMS.sha256).
+1. Download `ACS-Scanner-1.0.4-windows.exe` from the [tagged release](https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.4) and compare its SHA-256 with [`CHECKSUMS.sha256`](CHECKSUMS.sha256).
 2. The executable is single-file and portable — no installer needed.
 3. The build connects directly to `https://cslonghorn.com/acs/api.php` or can be configured via `%APPDATA%\LongHorn ACS\acp-settings.json`.
-4. Start Counter-Strike, open `ACS-Scanner-1.0.3-windows.exe`, and read the disclosure before scanning.
+4. Start Counter-Strike, open `ACS-Scanner-1.0.4-windows.exe`, and read the disclosure before scanning.
 5. Click **Scan** to begin. When complete, the signed report uploads automatically.
 
 ## 🛡️ Transparency
 
-Version **1.0.3** is an official release. The app is **unsigned** and **not independently audited**. No verified antivirus analysis for this exact build is claimed. A GitHub download or matching checksum is not a guarantee of safety.
+Version **1.0.4** is an official release. The app is **unsigned** and **not independently audited**. No verified antivirus analysis for this exact build is claimed. A GitHub download or matching checksum is not a guarantee of safety.
 
 | | |
 |:---|:---|
-| 📦 [**Release**](https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.3) | Tagged official release binaries |
+| 📦 [**Release**](https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.4) | Tagged official release binaries |
 | 🔐 [**CHECKSUMS.sha256**](CHECKSUMS.sha256) | Verify your download |
 | 📋 [**FILE-MANIFEST.json**](FILE-MANIFEST.json) | Exact file manifest of the build |
 | 🧾 [**DEPENDENCIES.json**](DEPENDENCIES.json) | Dependency inventory |
@@ -135,7 +135,7 @@ This is a distribution and transparency repository. The scanner source is not pu
 
 <div align="center">
 
-**[⬇️ Download](https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.3)** · **[✅ Verify](VERIFY.md)** · **[🔏 Privacy](PRIVACY.md)** · **[🚨 Security](SECURITY.md)** · **[🌐 cslonghorn.com](https://www.cslonghorn.com)**
+**[⬇️ Download](https://github.com/cstrikelonghorn/LongHorn-ACS/releases/tag/v1.0.4)** · **[✅ Verify](VERIFY.md)** · **[🔏 Privacy](PRIVACY.md)** · **[🚨 Security](SECURITY.md)** · **[🌐 cslonghorn.com](https://www.cslonghorn.com)**
 
 <sub>Copyright © 2026 <b>LongHorn</b> — all rights reserved. Not affiliated with or endorsed by Valve, GitHub or Microsoft.<br/>
 Counter-Strike, Half-Life and Steam are trademarks of their respective owners.</sub>
