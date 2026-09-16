@@ -8,6 +8,27 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.3] — 2026-09-16
+
+Required update: 1.0.2 and older can no longer upload reports.
+
+### Security
+- New upload credentials; reports must be signed by the scanner and are verified by the server.
+
+## [1.0.2] — 2026-09-15
+
+### Changed
+- Connected server detection also reads the running engine and resolves servers joined by domain name.
+- Reports taken outside a match server are clearly marked.
+- Scanning runs off the interface thread with cancellation and bounded-memory hashing.
+- Ordinary wheel-jump binds are no longer flagged; file-presence findings are review signals.
+
+## [1.0.1] — 2026-09-13
+
+### Added
+- The connected game server is read from the system's UDP endpoint table; no administrator prompt.
+- In-app update notice.
+
 ## [1.0.0] — 2026-09-13
 
 First release. The desktop app is a single self-contained executable that runs on 32-bit and 64-bit Windows 10/11.

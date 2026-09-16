@@ -1,20 +1,20 @@
 {
-  "version": "1.0.0",
-  "tag": "v1.0.0",
+  "version": "1.0.3",
+  "tag": "v1.0.3",
   "repository": "cstrikelonghorn/LongHorn-ACS",
-  "asset": "ACS-Scanner-1.0.0-windows.exe",
+  "asset": "ACS-Scanner-1.0.3-windows.exe",
   "assets": [
-    "ACS-Scanner-1.0.0-windows.exe",
+    "ACS-Scanner-1.0.3-windows.exe",
     "DOTNET-LICENSE.txt",
     "DOTNET-NOTICES.txt",
     "WINDOWSDESKTOP-LICENSE.txt"
   ],
-  "sha256": "bc6560970bfbb1553639b8dc8036ef88993cb138a1d4e181b32e3af6c4fb5c69",
-  "sizeBytes": 4067328,
-  "buildFingerprint": "bc6560970bfb",
+  "sha256": "01e5a5a58b0b87f338d19537fa01b89bfa097bf4207a785bc2c6b976baef471f",
+  "sizeBytes": 4081152,
+  "buildFingerprint": "01e5a5a58b0b",
   "prerelease": false,
   "publisherSigning": "not-signed",
   "independentAudit": "not-performed",
   "antivirusAnalysis": "not-verified",
-  "preparedAt": "2026-09-14T01:55:07.175492+00:00"
+  "preparedAt": "2026-09-16T18:31:17.168739+00:00"
 }

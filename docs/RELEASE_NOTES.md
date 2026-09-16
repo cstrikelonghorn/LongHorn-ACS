@@ -1,3 +1,20 @@
+# ACS 1.0.3
+
+**Required update.** Scanner 1.0.2 and older can no longer upload reports; they show an "out of date" message. Download `ACS-Scanner-1.0.3-windows.exe` from this release or from [cslonghorn.com/acs](https://cslonghorn.com/acs/download.php) and scan again.
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **New upload credentials.** Every report is signed by the scanner and checked by the server; unsigned or edited reports are refused.
+- **Connected server detection.** The game server is read from the running game and the system's network table, including servers joined by domain name. Reports taken outside a match server are clearly marked.
+- **Update notice.** The app tells you when a newer version is published.
+- **Steadier scans.** Scanning runs off the interface thread, can be cancelled, and streams file hashes with bounded memory. Ordinary jump binds are no longer flagged, and file-presence findings are marked for review instead of treated as proof of use.
+
+Known limitations: unsigned executable; no independent audit; no verified antivirus report for this exact release; no measured real-world false-positive/recall benchmark; operator-managed data retention. ACS does not claim to detect every cheat or to be immune to bypass.
+
+See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.0
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable with the .NET runtime built in — no installer, no extra files. Runs as administrator. Requires a running compatible Counter-Strike 1.6/GoldSrc client and an operator-provided report server configuration. No endpoint or secret is bundled.
