@@ -8,6 +8,13 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.5] — 2026-09-17
+
+### Added
+- Flagged programs in Windows history show when they last ran, how often, which records list them, and whether the file is still on disk.
+- Flagged Recycle Bin files include their original size.
+- Reports note whether the scan ran with administrator rights.
+
 ## [1.0.4] — 2026-09-16
 
 ### Fixed

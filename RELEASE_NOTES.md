@@ -1,3 +1,15 @@
+# ACS 1.0.5
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **Clearer evidence for referees.** When the scanner flags a program in Windows' history, the report now shows when it last ran, how often, which Windows records list it, and whether the file is still on disk.
+- **Recycle Bin details.** Flagged deleted files now include their original size.
+- **Administrator note.** Windows keeps most run dates where only administrators can read them. Running the scanner as administrator gives more complete dates; without it, the report says so.
+
+1.0.4 keeps working; this update is recommended. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.4
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
