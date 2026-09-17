@@ -8,6 +8,20 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.7] — 2026-09-17
+
+Scanner 1.0.7 (sha256 `80feec4b362961fcf18ea12d796ec4f83263b1243f8dd6ee2a04be727cb37fb6`).
+
+### Added
+- Memory signature stage: reviewed byte patterns matched in the game's executable memory, under read and time budgets. Matches stay at review level.
+- Kernel driver checks for publicly documented vulnerable drivers and signatures that do not validate.
+- Memory and hook inspection report their coverage; an inspection that cannot finish is reported as a limitation, not a clean result.
+
+### Fixed
+- The connected game server is no longer taken from stray bytes in game memory; reports no longer show addresses such as 3.0.0.0:1024.
+- A config file alone can no longer produce a Cheat verdict; those checks are capped at review level.
+- Driver paths are no longer reported doubled.
+
 ## [1.0.6] — 2026-09-17
 
 ### Changed

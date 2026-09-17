@@ -1,3 +1,17 @@
+# ACS 1.0.7
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **Memory checks.** The scanner now compares the game's running memory against reviewed cheat patterns. A match is review evidence, never a verdict on its own.
+- **Driver checks.** Kernel drivers known to be abused for cheating, and drivers whose signature does not check out, are listed for review with their file path.
+- **Honest coverage.** When a memory or hook check cannot finish, the report says so instead of showing a clean result.
+- **Correct server on the report.** The connected server is no longer guessed from stray data in game memory, so reports no longer show addresses like 3.0.0.0:1024.
+- **Fairer config checks.** A line in a config file no longer produces a "cheat" verdict by itself; those findings stay at review level, as intended.
+
+1.0.6 keeps working; this update is recommended. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.6
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.

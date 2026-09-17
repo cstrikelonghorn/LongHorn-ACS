@@ -1,15 +1,15 @@
-# Developer validation — 1.0.0
+# Developer validation — 1.0.7
 
-Performed locally on 64-bit Windows, 2026-09-14, including the scanner's system probes run as a 32-bit process. These are maintainer-run checks, not an independent audit or malware certification.
+Performed locally on 64-bit Windows, 2026-09-17, including the scanner's system probes run as a 32-bit process. These are maintainer-run checks, not an independent audit or malware certification.
 
 | Check | Result |
 | --- | --- |
-| Self-contained single-file 32-bit Release publish (runs on 32-bit and 64-bit Windows) | Succeeded; 0 errors, 130 compiler warnings |
-| Desktop regression checks | 54 passed; system probes also run as a 32-bit process on 64-bit Windows (10 passed) |
-| Backend regression suites | 8 suites passed; 133 assertions |
-| Signature-feed validation | 5 tests passed |
+| Self-contained single-file 32-bit Release publish (runs on 32-bit and 64-bit Windows) | Succeeded; 0 errors, 280 compiler warnings |
+| Desktop regression checks | 215 passed, including the memory signature, driver trust and inspection coverage checks |
+| Backend regression suites | 19 suites passed; 489 assertions |
+| Signature-feed and memory-rule import validation | 10 tests passed |
 
-Desktop checks cover ordinary binds versus recursive scripts, disguised executable configs, informational severity, verified file hashes versus hash-looking filenames, HTTPS requirements, cancellation, file-budget coverage, upload consent failing closed, the privacy notice, signature classification (modified versus forged), module trust by install location, and client identity from Authenticode signatures and Steam DLL load paths.
+Desktop checks cover ordinary binds versus recursive scripts, disguised executable configs, informational severity, verified file hashes versus hash-looking filenames, HTTPS requirements, cancellation, file-budget coverage, upload consent failing closed, the privacy notice, signature classification (modified versus forged), module trust by install location, client identity from Authenticode signatures and Steam DLL load paths, memory-pattern matching against reviewed samples, kernel driver trust, and the caps that keep config-only findings at review level.
 
 Backend checks cover identity/risk handling, compatibility-profile boundaries, signed report ingestion and server-side recomputation, report access controls, indexing, release reputation, and the report page using the scanner's signature-verified client verdict.
 
