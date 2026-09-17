@@ -1,3 +1,14 @@
+# ACS 1.0.6
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **Easier to read before you scan.** The privacy screen now says in plain words what is checked, what is sent, that the report is sent automatically, and who can see it. Same design, same choices.
+- **Tip on screen.** Stay on your match server while scanning, so the admin can see where you played.
+
+1.0.5 keeps working; this update is recommended. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.5
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.

@@ -8,6 +8,11 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.6] — 2026-09-17
+
+### Changed
+- The privacy screen before a scan uses plain, shorter wording with the same design, and reminds players to stay on their match server.
+
 ## [1.0.5] — 2026-09-17
 
 ### Added
