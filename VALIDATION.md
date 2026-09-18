@@ -1,11 +1,11 @@
-# Developer validation — 1.0.9
+# Developer validation — 1.1.0
 
 Performed locally on 64-bit Windows, 2026-09-18, including the scanner's system probes run as a 32-bit process. These are maintainer-run checks, not an independent audit or malware certification.
 
 | Check | Result |
 | --- | --- |
 | Self-contained single-file 32-bit Release publish (runs on 32-bit and 64-bit Windows) | Succeeded; 0 errors, 280 compiler warnings |
-| Desktop regression checks | 230 passed, including catalog-signed driver verification and look-alike sprite names |
+| Desktop regression checks | 240 passed, including redirect ownership and mapped-image detection |
 | Backend regression suites | 20 suites passed; 517 assertions |
 | Signature-feed and memory-rule import validation | 10 tests passed |
 

@@ -8,6 +8,17 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.1.0] - 2026-09-18
+
+Scanner 1.1.0 (sha256 `7fade053e82a466e01f72de6c72e302a3a5837b098230a1f2fa5f9d610557b13`).
+
+### Added
+- A redirect out of a render or timing export is followed to the module that owns it, and findings name that module and its signer. A redirect ending in a signed, trusted module is context; one ending nowhere a module owns keeps its severity.
+- Executable private memory carrying a complete PE image is reported as a mapped image - how a manually mapped cheat stays out of the module list.
+
+### Fixed
+- A retail Steam client with the overlay enabled no longer produces hook, patch and memory warnings for the overlay's own detours.
+
 ## [1.0.9] - 2026-09-18
 
 Scanner 1.0.9 (sha256 `184348e398f548c979e70cb6a3966328962a9366c1a9b8154fdc248c24a41a03`).

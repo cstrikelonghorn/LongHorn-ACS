@@ -1,25 +1,25 @@
-# Verify ACS 1.0.9
+# Verify ACS 1.1.0
 
-Download only from [cstrikelonghorn/LongHorn-ACS Releases](https://github.com/cstrikelonghorn/LongHorn-ACS/releases). The release file is the single executable `ACS-Scanner-1.0.9-windows.exe`. The public repository contains release documentation; the scanner source remains private.
+Download only from [cstrikelonghorn/LongHorn-ACS Releases](https://github.com/cstrikelonghorn/LongHorn-ACS/releases). The release file is the single executable `ACS-Scanner-1.1.0-windows.exe`. The public repository contains release documentation; the scanner source remains private.
 
 ## Verify the exact file
 
 Download `CHECKSUMS.sha256` from the same tagged release and compare:
 
 ```powershell
-Get-FileHash .\ACS-Scanner-1.0.9-windows.exe -Algorithm SHA256
+Get-FileHash .\ACS-Scanner-1.1.0-windows.exe -Algorithm SHA256
 ```
 
-Expected SHA-256: `184348e398f548c979e70cb6a3966328962a9366c1a9b8154fdc248c24a41a03`
+Expected SHA-256: `7fade053e82a466e01f72de6c72e302a3a5837b098230a1f2fa5f9d610557b13`
 
 `FILE-MANIFEST.json` lists every release file with its size and hash. A matching checksum detects differences from the published file; it does not prove safety or protect you if the publisher's release account is compromised.
 
-Every report ACS uploads records the first 12 characters of this SHA-256 as its build fingerprint (`184348e398f5` for this release), so a report can always be traced to the exact executable that produced it.
+Every report ACS uploads records the first 12 characters of this SHA-256 as its build fingerprint (`7fade053e82a` for this release), so a report can always be traced to the exact executable that produced it.
 
 ## Publisher signature
 
 ```powershell
-Get-AuthenticodeSignature .\ACS-Scanner-1.0.9-windows.exe
+Get-AuthenticodeSignature .\ACS-Scanner-1.1.0-windows.exe
 ```
 
 **This release is unsigned.** Expected status: `NotSigned`. No trusted publisher certificate was available during preparation. Signing and timestamping must occur before generating a future release's final checksums.

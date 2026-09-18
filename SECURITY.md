@@ -1,6 +1,6 @@
 # Security reporting
 
-ACS 1.0.9. Independent audit, publisher signing, adversarial testing, and a full live-client compatibility matrix remain outstanding.
+ACS 1.1.0. Independent audit, publisher signing, adversarial testing, and a full live-client compatibility matrix remain outstanding.
 
 If the repository's Security tab offers **Report a vulnerability**, use it for private reports. Otherwise open a minimal issue requesting a private contact channel, without exploit details, credentials, player identifiers, private report links, or attachments containing personal data.
 

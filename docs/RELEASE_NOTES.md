@@ -1,3 +1,15 @@
+# ACS 1.1.0
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **Reports name who did it.** When something redirects a game function, the scanner now follows the redirect to the software that owns it and says so: "into gameoverlayrenderer.dll, signed by Valve Corp." Overlays and recorders are recognised for what they are instead of being reported as injected code.
+- **Overlays stop producing warnings.** A retail Steam client with the overlay on used to come back with six warnings for the overlay's own work. It comes back clean now.
+- **Better at finding hidden modules.** A cheat that writes itself into memory to stay out of Windows' module list is now reported as a mapped image.
+
+1.0.9 keeps working; this update is recommended. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.9
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
