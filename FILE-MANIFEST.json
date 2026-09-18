@@ -1,9 +1,9 @@
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "files": [
     {
-      "path": "ACS-Scanner-1.0.8-windows.exe",
-      "sha256": "4882204034584d6223342feffa8cfbf4048caca3734f1fd97e0e361edcdc6413",
+      "path": "ACS-Scanner-1.0.9-windows.exe",
+      "sha256": "184348e398f548c979e70cb6a3966328962a9366c1a9b8154fdc248c24a41a03",
       "bytes": 4131328
     },
     {

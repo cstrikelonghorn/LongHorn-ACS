@@ -1,4 +1,4 @@
-# Developer validation — 1.0.8
+# Developer validation — 1.0.9
 
 Performed locally on 64-bit Windows, 2026-09-18, including the scanner's system probes run as a 32-bit process. These are maintainer-run checks, not an independent audit or malware certification.
 

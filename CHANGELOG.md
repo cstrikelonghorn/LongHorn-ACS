@@ -8,6 +8,13 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.9] - 2026-09-18
+
+Scanner 1.0.9 (sha256 `184348e398f548c979e70cb6a3966328962a9366c1a9b8154fdc248c24a41a03`).
+
+### Changed
+- The application file is now `ACScanner.exe`, previously `ACPScanner.exe`. The download keeps its usual name, `ACS-Scanner-<version>-windows.exe`.
+
 ## [1.0.8] - 2026-09-18
 
 Scanner 1.0.8 (sha256 `4882204034584d6223342feffa8cfbf4048caca3734f1fd97e0e361edcdc6413`).

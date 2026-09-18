@@ -1,3 +1,13 @@
+# ACS 1.0.9
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **The application file is now `ACScanner.exe`.** It used to be `ACPScanner.exe`, a leftover from the project's old name. Nothing else changes: the download you receive is still named `ACS-Scanner-<version>-windows.exe`, and the app works exactly as before.
+
+1.0.8 keeps working; this update is cosmetic. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.8
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
