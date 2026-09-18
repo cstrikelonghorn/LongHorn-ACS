@@ -8,6 +8,17 @@ All notable changes to LongHorn ACS are documented here. The format follows [Kee
 - README, docs (`FAQ`, `DOWNLOAD`, `ARCHITECTURE`, `DETECTION`, `DEPLOYMENT`) and community health files.
 - GitHub Actions CI (C# build + PHP lint/tests).
 
+## [1.0.8] - 2026-09-18
+
+Scanner 1.0.8 (sha256 `4882204034584d6223342feffa8cfbf4048caca3734f1fd97e0e361edcdc6413`).
+
+### Fixed
+- Kernel driver signatures are verified against the Windows .cat catalogs that sign most inbox drivers, so ordinary Windows drivers are no longer reported as unsigned.
+- A look-alike sprite name (capital "I" for "l") is review evidence only when it shadows a sprite the engine loads; a spare file the engine never loads is context.
+
+### Changed
+- Engine database curation: rules naming files that ship with the game or Windows, legacy 8-character MD5 prefixes for stock file names, and patterns made only of digits are disabled with their reason recorded; 185 researched file hashes were added as review-level rules.
+
 ## [1.0.7] — 2026-09-17
 
 Scanner 1.0.7 (sha256 `80feec4b362961fcf18ea12d796ec4f83263b1243f8dd6ee2a04be727cb37fb6`).

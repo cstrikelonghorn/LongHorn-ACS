@@ -2,7 +2,7 @@
   "scope": "Dependency inventory derived from .NET publish output; not an independent vulnerability scan",
   "libraries": [
     {
-      "name": "ACPScanner/1.0.7",
+      "name": "ACPScanner/1.0.8",
       "type": "project"
     },
     {

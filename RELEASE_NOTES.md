@@ -1,3 +1,15 @@
+# ACS 1.0.8
+
+Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
+
+- **Windows drivers are read correctly.** Most drivers that ship with Windows are signed through catalog files rather than inside the driver itself. The scanner now reads those catalogs, so ordinary system drivers are no longer listed as unsigned.
+- **Fewer pointless warnings.** A sprite file whose name uses a capital "I" in place of an "l" is only flagged when it can actually stand in for a sprite the game loads. Spare files that several client builds ship are listed as context instead.
+- **Cleaner reports overall.** Together with the database clean-up on the server, scans that used to end in "review required" now come back clean unless something real was found.
+
+1.0.7 keeps working; this update is recommended. See `VERIFY.md` to check your download.
+
+---
+
 # ACS 1.0.7
 
 Windows 10 and 11, 32-bit and 64-bit. One portable executable that uses the .NET Framework 4.8 built into Windows. No installer and no administrator prompt.
